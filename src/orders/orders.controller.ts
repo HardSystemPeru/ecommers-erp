@@ -7,6 +7,7 @@ import {
   Res,
   Query,
   UseGuards,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { OrdersService } from './orders.service';
@@ -31,11 +32,11 @@ export class OrdersController {
   @UseGuards(AuthGuard('jwt'))
   @Post()
   create(@Body() createOrderDto: CreateOrderDto, @GetClient() user: any) {
-    return this.ordersService.create(
-      createOrderDto,
-      user?.id,
-      user?.role === 'admin',
-    );
+    
+        if (!user?.id || Number.isNaN(user?.id)) {
+            throw new UnauthorizedException('No se pudo determinar el cliente');
+           }
+    return this.ordersService.create( createOrderDto, user?.id, user?.role === 'admin',);
   }
 
   @UseGuards(JwtAuthGuard)

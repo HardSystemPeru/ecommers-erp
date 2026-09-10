@@ -45,7 +45,9 @@ model article_images {
   position   Int      @default(0)
   is_main    Boolean  @default(false)
   created_at DateTime @default(now()) @db.Timestamp(0)
-  articles   articles @relation(fields: [article_id], references: [id], onDelete: Cascade, map: "fk_article_images_article")
+   articles   articles @relation(fields: [article_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "article_images_article_id_foreign")
+
+  @@index([article_id], map: "article_images_article_id_foreign")
 
   @@index([article_id], map: "fk_article_images_article")
 }
@@ -102,8 +104,7 @@ model articles {
   is_new_for_web                                                                      Boolean?                     @default(false)
   offer_price_percent                                                                 Decimal?                     @default(0.00) @db.Decimal(8, 2)
   has_offer                                                                           Boolean?                     @default(false)
-  slug                                                                                String?                      @unique(map: "UNI",length: 191) @db.Text
-  article_images                                                                      article_images[]
+  slug                                                                                String?                      @unique(map: "UNI",length: 200) @db.Text
   brands                                                                              brands?                      @relation(fields: [brand_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "articles_brand_id_foreign")
   categories                                                                          categories?                  @relation(fields: [category_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "articles_category_id_foreign")
   companies                                                                           companies?                   @relation(fields: [company_type_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "articles_company_type_id_foreign")
@@ -118,16 +119,17 @@ model articles {
   dispatch_article_serials                                                            dispatch_article_serials[]
   entry_guide_article                                                                 entry_guide_article[]
   entry_item_serials                                                                  entry_item_serials[]
-  favorites                                                                           favorites[]
-  order_items                                                                         order_items[]
   purchase_order_article                                                              purchase_order_article[]
   reference_codes                                                                     reference_codes[]
-  reviews                                                                             reviews[]
   sale_article                                                                        sale_article[]
   sale_item_serial                                                                    sale_item_serial[]
   visible_articles                                                                    visible_articles[]
   warranties                                                                          warranties[]
-  @@fulltext([description])
+  article_images    article_images[]
+  reviews reviews[]
+  favorites   favorites[]
+  order_items order_items[]
+
   @@index([brand_id], map: "articles_brand_id_foreign")
   @@index([category_id], map: "articles_category_id_foreign")
   @@index([company_type_id], map: "articles_company_type_id_foreign")
@@ -248,7 +250,7 @@ model build_pc_tabla {
   created_at            DateTime?               @db.Timestamp(0)
   updated_at            DateTime?               @db.Timestamp(0)
   image_build           String?                 @db.VarChar(255)
-  slug                  String?                 @unique(map: "UNI", length: 191) @db.Text
+  slug                  String?                 @unique(map: "UNI", length: 200) @db.Text
   build_detail_pc_tabla build_detail_pc_tabla[]
   companies             companies               @relation(fields: [company_id], references: [id], onUpdate: Restrict, map: "build_pc_tabla_company_id_foreign")
 
@@ -280,26 +282,28 @@ model categories {
 }
 
 model clients {
-  id                  BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
-  names               String       @db.VarChar(100)
-  lastnames           String       @db.VarChar(100)
-  email               String       @unique(map: "clients_email_unique") @db.VarChar(150)
-  phone               String?      @db.VarChar(20)
-  document_type       String?      @db.VarChar(20)
-  document_number     String?      @db.VarChar(20)
-  google_id           String?      @unique(map: "clients_google_id_unique") @db.VarChar(255)
-  password            String?      @db.VarChar(255)
-  status              Int          @default(1)
-  created_at          DateTime     @default(now()) @db.Timestamp(0)
-  updated_at          DateTime     @default(now()) @db.Timestamp(0)
-  role                String       @default("client") @db.VarChar(20)
-  reset_token         String?      @db.VarChar(255)
-  reset_token_expires DateTime?    @db.Timestamp(0)
-  address             String?      @db.VarChar(200)
-  complaints          complaints[]
-  favorites           favorites[]
-  orders              orders[]
-  reviews             reviews[]
+  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  names               String    @db.VarChar(100)
+  lastnames           String    @db.VarChar(100)
+  email               String    @unique(map: "clients_email_unique") @db.VarChar(150)
+  phone               String?   @db.VarChar(20)
+  document_type       String?   @db.VarChar(20)
+  document_number     String?   @db.VarChar(20)
+  google_id           String?   @unique(map: "clients_google_id_unique") @db.VarChar(255)
+  password            String?   @db.VarChar(255)
+  status              Int       @default(1)
+  created_at          DateTime  @default(now()) @db.Timestamp(0)
+  updated_at          DateTime  @default(now()) @db.Timestamp(0)
+  role                String    @default("client") @db.VarChar(20)
+  reset_token         String?   @db.VarChar(255)
+  reset_token_expires DateTime? @db.Timestamp(0)
+  address             String?   @db.VarChar(200)
+  ruc_number          String?   @db.VarChar(20)
+
+  orders orders[]
+  reviews reviews[]
+  RefreshToken RefreshToken[]
+
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -943,11 +947,11 @@ model document_types {
   collections                                                              collections[]
   dispatch_notes_dispatch_notes_document_type_idTodocument_types           dispatch_notes[]   @relation("dispatch_notes_document_type_idTodocument_types")
   dispatch_notes_dispatch_notes_reference_document_type_idTodocument_types dispatch_notes[]   @relation("dispatch_notes_reference_document_type_idTodocument_types")
-  note_reasons                                                             note_reasons[]
-  orders                                                                   orders[]
+  note_reasons                                                             note_reasons[] 
   purchase                                                                 purchase[]
   sales                                                                    sales[]
   transaction_logs                                                         transaction_logs[]
+  orders orders[] 
 }
 
 model documents_entry_guides_tabla {
@@ -1112,9 +1116,10 @@ model favorites {
   client_id  BigInt   @db.UnsignedBigInt
   article_id BigInt   @db.UnsignedBigInt
   created_at DateTime @default(now()) @db.Timestamp(0)
-  articles   articles @relation(fields: [article_id], references: [id], onDelete: Cascade)
-  clients    clients  @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  
+  articles   articles @relation(fields: [article_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "favorites_article_id_foreign")
 
+  @@index([article_id], map: "favorites_article_id_foreign")
   @@unique([client_id, article_id])
   @@index([article_id])
 }
@@ -1128,9 +1133,10 @@ model reviews {
   status     Int      @default(1) @db.TinyInt
   created_at DateTime @default(now()) @db.Timestamp(0)
   updated_at DateTime @default(now()) @db.Timestamp(0)
-  articles   articles @relation(fields: [article_id], references: [id], onDelete: Cascade, map: "reviews_article_id_foreign")
-  clients    clients  @relation(fields: [client_id], references: [id], onDelete: Cascade, map: "reviews_client_id_foreign")
 
+  articles articles @relation(fields: [article_id], references: [id], onDelete:Cascade ,onUpdate:Restrict ,map: "reviews_article_id_foreign")
+  clients clients @relation(fields: [client_id], references: [id] ,onDelete: Cascade, onUpdate: Restrict, map: "reviews_client_id_foreign")
+ 
   @@unique([client_id, article_id], map: "reviews_client_id_article_id_unique")
   @@index([client_id], map: "reviews_client_id_foreign")
   @@index([article_id], map: "reviews_article_id_foreign")
@@ -1932,7 +1938,7 @@ model sc_moviminw {
   sc_moviminw_correl sc_moviminw_correl[]
 
   @@id([CIA, ANOPR, MESPR, CODLIB, COMP, CORREL, ORDEN])
-   @@unique([CIA, ANOPR, MESPR, CODLIB, COMP, CORREL], map: "FK_sc_moviminw_correl_unique")
+  @@unique([CIA, ANOPR, MESPR, CODLIB, COMP, CORREL])
   @@index([CODLIB], map: "CODLIB")
   @@index([CIA, CUENTA], map: "IDX_jcmovimi_2")
 }
@@ -2855,31 +2861,61 @@ model order_items {
   unit_price Decimal  @db.Decimal(10, 2)
   subtotal   Decimal  @db.Decimal(10, 2)
   created_at DateTime @default(now()) @db.Timestamp(0)
-  orders     orders   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "order_items_ibfk_1")
-  articles   articles @relation(fields: [article_id], references: [id], onUpdate: Restrict, map: "order_items_ibfk_2")
+
+  orders     orders   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "order_items_order_id_foreign")
+  articles   articles @relation(fields: [article_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "order_items_article_id_foreign")
+
 
   @@index([article_id], map: "idx_order_items_article_id")
   @@index([order_id], map: "idx_order_items_order_id")
 }
 
 model orders {
-  id               BigInt          @id @default(autoincrement()) @db.UnsignedBigInt
-  client_id        BigInt          @db.UnsignedBigInt
-  document_type_id BigInt?         @db.UnsignedBigInt
-  total            Decimal         @default(0.00) @db.Decimal(10, 2)
-  status           orders_status   @default(NUEVO)
-  sale_id          BigInt?         @unique(map: "orders_sale_id_unique") @db.UnsignedBigInt
-  is_cancelled     Boolean         @default(false)
-  terms            Boolean         @default(false)
-  created_at       DateTime        @default(now()) @db.Timestamp(0)
-  notifications    notifications[]
-  order_items      order_items[]
-  clients          clients         @relation(fields: [client_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_orders_client")
-  document_types   document_types? @relation(fields: [document_type_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_orders_document_type")
+  id               BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  client_id        BigInt         @db.UnsignedBigInt
+  document_type_id BigInt?        @db.UnsignedBigInt
+  total            Decimal        @default(0.00) @db.Decimal(10, 2)
+  status           orders_status? @default(NUEVO)
+  sale_id          BigInt?        @unique(map: "orders_sale_id_unique") @db.UnsignedBigInt
+  is_cancelled     Boolean        @default(false)
+  created_at       DateTime       @default(now()) @db.Timestamp(0)
+  terms            Boolean        @default(false)
+  order_items order_items[]
 
-  @@index([client_id], map: "fk_orders_client")
+  clients clients @relation(fields: [client_id],references: [id], onDelete: Cascade, onUpdate: Restrict, map: "orders_client_id_foreign")
+  document_types document_types? @relation(fields: [document_type_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map:"orders_document_type_id_foreign")
+
+  @@index([client_id], map: "orders_client_id_foreign")
+  @@index([document_type_id], map: "orders_document_type_id_foreign")
   @@index([sale_id], map: "orders_sale_id_index")
-  @@index([document_type_id], map: "fk_orders_document_type")
+} 
+
+model RefreshToken {
+  id           String @id @default(uuid())
+  hashedToken  String @unique @db.VarChar(255)
+
+  clientId     BigInt
+  client       clients @relation(fields: [clientId],references: [id],onDelete: Cascade)
+
+  deviceName   String? @db.VarChar(255)
+  userAgent    String? @db.VarChar(512)
+  ip           String? @db.VarChar(45)
+  city         String? @db.VarChar(100)
+  country      String? @db.VarChar(100)
+
+  revoked      Boolean @default(false)
+  revokedReason String? @db.VarChar(50)
+
+  replacedById String? @unique
+  replacedBy   RefreshToken? @relation("TokenChain", fields: [replacedById],references: [id])
+  previousToken RefreshToken? @relation("TokenChain")
+
+  lastUsedAt   DateTime?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([clientId])
+  @@map("refresh_tokens")
 }
 
 model notifications {
@@ -2890,7 +2926,6 @@ model notifications {
   read_at    DateTime? @db.Timestamp(0)
   deleted_at DateTime? @db.DateTime(0)
   created_at DateTime  @default(now()) @db.Timestamp(0)
-  orders     orders    @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "notifications_order_id_foreign")
 
   @@index([order_id], map: "idx_notifications_order")
 }
@@ -2963,10 +2998,9 @@ model complaints {
   signature_path    String?                   @db.VarChar(500)
   customer_id       BigInt?                   @db.UnsignedBigInt
   status            complaints_status         @default(NUEVO)
-  observation       String?                   @db.Text
   date_complaint    DateTime                  @db.Date
   created_at        DateTime                  @default(now()) @db.Timestamp(0)
-  clients           clients?                  @relation(fields: [customer_id], references: [id], onUpdate: Restrict, map: "fk_complaints_customer")
+  observation       String?                   @db.VarChar(500)
 
   @@index([customer_id], map: "idx_complaints_customer_id")
   @@index([status], map: "idx_complaints_status")
@@ -2977,6 +3011,89 @@ model terms_conditions {
   title      String   @default("TÃ©rminos y Condiciones") @db.VarChar(150)
   content    String   @db.Text
   updated_at DateTime @default(now()) @updatedAt @db.Timestamp(0)
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model bak_documents_entry_guides_482 {
+  id                    BigInt    @default(0) @db.UnsignedBigInt
+  entry_guide_id        BigInt    @default(0) @db.UnsignedBigInt
+  reference_document_id BigInt    @default(0) @db.UnsignedBigInt
+  reference_serie       String?   @default("") @db.VarChar(255)
+  reference_correlative String?   @default("") @db.VarChar(255)
+  created_at            DateTime? @db.Timestamp(0)
+  updated_at            DateTime? @db.Timestamp(0)
+
+  @@map("_bak_documents_entry_guides_482")
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model bak_entry_guide_article_482 {
+  id              BigInt    @default(0) @db.UnsignedBigInt
+  entry_guide_id  BigInt?   @db.UnsignedBigInt
+  article_id      BigInt    @db.UnsignedBigInt
+  description     String    @db.VarChar(255)
+  quantity        Float     @default(0)
+  subtotal        Float?    @default(0)
+  descuento       Float?    @default(0)
+  total_descuento Float?    @default(0)
+  total           Float?    @default(0)
+  saldo           Float?
+  created_at      DateTime? @db.Timestamp(0)
+  updated_at      DateTime? @db.Timestamp(0)
+
+  @@map("_bak_entry_guide_article_482")
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model bak_entry_guides_482 {
+  id                       BigInt    @default(0) @db.UnsignedBigInt
+  branch_id                BigInt    @default(0) @db.UnsignedBigInt
+  serie                    String    @default("") @db.VarChar(20)
+  correlative              String    @default("") @db.VarChar(20)
+  customer_id              BigInt    @default(0) @db.UnsignedBigInt
+  date                     DateTime  @default(dbgenerated("('0000-00-00')")) @db.Date
+  includ_igv               Boolean?  @default(false)
+  currency_id              BigInt    @default(0) @db.UnsignedBigInt
+  cia_id                   BigInt    @default(0) @db.UnsignedBigInt
+  ingress_reason_id        BigInt    @default(0) @db.UnsignedBigInt
+  observations             String?   @db.Text
+  reference_document_id    BigInt?   @default(0)
+  reference_serie          String?   @default("") @db.VarChar(20)
+  reference_correlative    String?   @default("") @db.VarChar(20)
+  subtotal                 Float?    @default(0)
+  total_descuento          Float?    @default(0)
+  entry_igv                Float?    @default(0)
+  total                    Float?    @default(0)
+  update_price             Boolean?  @default(false)
+  nc_document_id           BigInt?   @default(0)
+  nc_reference_serie       String?   @default("") @db.VarChar(20)
+  nc_reference_correlative String?   @default("") @db.VarChar(20)
+  status                   Boolean   @default(true)
+  payment_type_id          BigInt?
+  days                     Int?
+  date_ven                 DateTime? @db.DateTime(0)
+  accounting_year          Int?
+  accounting_montn         Int?
+  created_at               DateTime? @db.Timestamp(0)
+  updated_at               DateTime? @db.Timestamp(0)
+
+  @@map("_bak_entry_guides_482")
+  @@ignore
+}
+
+model mercado_libre_tokens {
+  id            BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  access_token  String    @db.VarChar(512)
+  refresh_token String    @db.VarChar(512)
+  token_type    String    @default("Bearer") @db.VarChar(255)
+  expires_in    Int       @default(21600) @db.UnsignedInt
+  expires_at    DateTime? @db.Timestamp(0)
+  scope         String?   @db.VarChar(1000)
+  user_id_ml    BigInt?   @db.UnsignedBigInt
+  created_at    DateTime? @db.Timestamp(0)
+  updated_at    DateTime? @db.Timestamp(0)
 }
 
 enum complaints_well_hired {

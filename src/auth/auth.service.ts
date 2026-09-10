@@ -12,7 +12,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateClientDto } from '../clients/dto/update-client.dto';
-import { randomBytes, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import * as nodemailer from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
@@ -20,10 +20,10 @@ import { firstValueFrom } from 'rxjs';
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-/** Shape returned by both /auth/login and /auth/google */
-export interface AuthResponse {
-  token: string;
-  user: { id: number; name: string; email: string };
+interface AuthMetadata {
+  ip?: string;
+  userAgent?: string;
+  deviceName?: string;
 }
 
 @Injectable()
@@ -33,159 +33,68 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-    private readonly httpService: HttpService
-  ) { }
+    private readonly httpService: HttpService,
+  ) {}
 
-  // ─── Registro de Clientes ──────────────────────────────────────────────────
-  async register(dto: RegisterDto) {
-    
-    const existingClient = await this.clientsService.findByEmail(dto.email);
+  // ─── Registro de Clientes ──────────────────────────────────────────────
+  async register(dto: RegisterDto, meta?: AuthMetadata) {
+    const email = dto.email.trim().toLowerCase();
+
+    const existingClient = await this.clientsService.findByEmail(email);
     if (existingClient) {
       throw new ConflictException('El correo ya está registrado');
     }
 
-    if (!dto.captchaToken) {
-    throw new BadRequestException(
-      'Captcha requerido'
-    );
-  }
+    // await this.verifyCaptcha(dto.captchaToken);
 
-  const secret = this.configService.get<string>('RECAPTCHA_SECRET_KEY');
+    // if (dto.document_number) {
+    //   await this.verifyDocumentNumber(dto.document_number);
+    // }
 
-     try {
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    const response =
-      await firstValueFrom(
-        this.httpService.post(
-          'https://www.google.com/recaptcha/api/siteverify',
-          null,
-          {
-            params: {
-              secret,
-              response: dto.captchaToken,
-            },
-          },
-        ),
-      ); 
-
-    if (!response.data.success) {
-      throw new BadRequestException(
-        'Captcha inválido'
-      );
-    }
-
-  } catch (error) {
-
-  if (error instanceof BadRequestException) {
-    throw error;
-  }
-
-  throw new BadRequestException(
-    'Error verificando captcha'
-  );
-}
-
-  // Continúa registro normal
-  const hashedPassword =
-    await bcrypt.hash(
-      dto.password,
-      10,
-    );
-
-    const response = await this.httpService.axiosRef.get(
-        `${process.env.EXTERNAL_API_URL}/${dto?.document_number}`,
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.PUBLICTOKEN}`,
-          },
-             validateStatus: () => true,
-        },
-        
-      );
-       console.log("estado",response.status)  
-      if (dto.document_number !== "" ) {
-          if (response?.status === 404) throw new UnauthorizedException('El dni no es correcto')   
-          if (!response?.data?.success  ) throw new BadRequestException('El dni no es correcto')     
-         if (!response?.data?.success  ) throw new BadRequestException('El dni no es correcto')
+    let client;
+    try {
+      client = await this.clientsService.create({
+        names: dto.names,
+        lastnames: dto.lastnames,
+        email,
+        phone: dto.phone,
+        document_type: dto.document_type,
+        document_number: dto.document_number,
+        password: hashedPassword,
+      });
+    } catch (error:any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException('El correo ya está registrado');
       }
-
-  const client =
-    await this.clientsService.create({
-      names: dto.names,
-      lastnames: dto.lastnames,
-      email: dto.email,
-      phone: dto.phone,
-      document_type: dto.document_type,
-      document_number: dto.document_number,
-      password: hashedPassword,
-    });
-
-    return this.generateAuthResponse(client);
-
-  }
-
-  // ─── Login Estándar (Clientes) ─────────────────────────────────────────────
-  async login(dto: LoginDto) {
-    const client = await this.clientsService.findByEmail(dto.email); 
-
-       if (!dto.captchaToken) {
-    throw new BadRequestException(
-      'Captcha requerido'
-    );
-  }
-   
-      const secret = this.configService.get<string>('RECAPTCHA_SECRET_KEY');
-
-       try {
-
-    const response =
-      await firstValueFrom(
-        this.httpService.post(
-          'https://www.google.com/recaptcha/api/siteverify',
-          null,
-          {
-            params: {
-              secret,
-              response: dto.captchaToken,
-            },
-          },
-        ),
-      );
-
-    if (!response.data.success) {
-      throw new BadRequestException(
-        'Captcha inválido'
-      );
+      throw error;
     }
 
-  } catch (error) {
-
-  if (error instanceof BadRequestException) {
-    throw error;
+    return this.generateAuthResponseLogin(client, meta);
   }
 
-  throw new BadRequestException(
-    'Error verificando captcha'
-  );
-}
+  // ─── Login Estándar (Clientes) ──────────────────────────────────────────
+  async login(dto: LoginDto, meta?: AuthMetadata) {
+    // await this.verifyCaptcha(dto.captchaToken);
 
+    const email = dto.email.trim().toLowerCase();
+    const client = await this.clientsService.findByEmail(email);
 
     if (!client || !client.password) {
-      throw new UnauthorizedException('Email inválidas');
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, client.password);
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Contraseña inválidas');
+    if (!isPasswordValid) { 
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    return this.generateAuthResponse(client);
+    return this.generateAuthResponseLogin(client, meta);
   }
 
-  // ─── Google login (clientes) ────────────────────────────────────────────────
-  async loginWithGoogle(idToken: string) {
-    // 1. Verify the token with Google
+  // ─── Google login (clientes) ────────────────────────────────────────────
+  async loginWithGoogle(idToken: string, meta?: AuthMetadata) {
     let payload: { email?: string; name?: string; sub?: string } | null = null;
     try {
       const ticket = await googleClient.verifyIdToken({
@@ -202,44 +111,119 @@ export class AuthService {
     }
 
     const { email, name = email, sub: googleId } = payload;
+    const normalizedEmail = email.trim().toLowerCase();
 
-    // 2. Find existing client or auto-create on first login
-    let client = await this.clientsService.findByEmail(email);
+    let client = await this.clientsService.findByEmail(normalizedEmail);
 
     if (!client) {
       client = await this.clientsService.createFromGoogle({
         name,
-        email,
+        email: normalizedEmail,
         googleId,
       });
     }
-    // 3. Issue JWT 
-    return this.generateAuthResponse(client);
+
+    return this.generateAuthResponseLogin(client, meta);
   }
 
-  // ─── Helper para generar respuesta ─────────────────────────────────────────
-  private generateAuthResponse(client: any) {
-    const numericId = Number(client.id);
+  // ─── Helpers privados ────────────────────────────────────────────────────
+
+  private async verifyCaptcha(captchaToken?: string) {
+    if (!captchaToken) {
+      throw new BadRequestException('Captcha requerido');
+    }
+
+    const secret = this.configService.get<string>('RECAPTCHA_SECRET_KEY');
+
+    let response;
+    try {
+      response = await firstValueFrom(
+        this.httpService.post(
+          'https://www.google.com/recaptcha/api/siteverify',
+          null,
+          {
+            params: { secret, response: captchaToken },
+            timeout: 5000,
+          },
+        ),
+      );
+    } catch {
+      throw new BadRequestException('Error verificando captcha');
+    }
+
+    if (!response.data.success) {
+      throw new BadRequestException('Captcha inválido');
+    }
+  }
+
+  private async verifyDocumentNumber(documentNumber: string) {
+    const externalApiUrl = this.configService.get<string>('EXTERNAL_API_URL');
+    const publicToken = this.configService.get<string>('PUBLIC_TOKEN');
+
+    let response;
+    try {
+      response = await this.httpService.axiosRef.get(
+        `${externalApiUrl}/${documentNumber}`,
+        {
+          headers: { Authorization: `Bearer ${publicToken}` },
+          validateStatus: () => true,
+          timeout: 5000,
+        },
+      );
+    } catch {
+      throw new BadRequestException('No se pudo validar el documento en este momento');
+    }
+
+    if (response.status === 404) {
+      throw new UnauthorizedException('El DNI no es correcto');
+    }
+
+    if (!response.data?.success) {
+      throw new BadRequestException('El DNI no es correcto');
+    }
+  }
+
+  private async generateAuthResponseLogin(client: any, meta?: AuthMetadata) {
+    const clientId = client.id.toString();
     const username = `${client.names || ''} ${client.lastnames || ''}`.trim();
 
-    const token = this.jwtService.sign({
-      sub: numericId,
+    const accessToken = this.jwtService.sign({
+      sub: clientId,
       email: client.email,
-      username: username,
+      username,
       jti: randomUUID(),
     });
 
+    const refreshToken = randomBytes(64).toString('hex');
+    const hashedToken = createHash('sha256').update(refreshToken).digest('hex');
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    await this.prisma.refreshToken.create({
+      data: {
+        clientId: client.id,
+        hashedToken,
+        expiresAt,
+        ip: meta?.ip,
+        userAgent: meta?.userAgent,
+        deviceName: meta?.deviceName,
+      },
+    });
+
     return {
-      token,
+      accessToken,
+      refreshToken,
       user: {
-        id: numericId,
-        username: username,
+        id: clientId,
+        username,
         email: client.email,
       },
     };
   }
 
-  async loginAdminUpdateImage(username: string, password: string) {
+  // ─── Login Admin ─────────────────────────────────────────────────────────
+  async loginAdminUpdateImage(username: string, password: string, meta?: AuthMetadata) {
     const client = await this.prisma.clients.findFirst({
       where: {
         OR: [{ email: username }, { names: username }],
@@ -247,35 +231,52 @@ export class AuthService {
     });
 
     if (!client) {
-      throw new UnauthorizedException('Usuario no existe');
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
     const isMatch = await bcrypt.compare(password, client.password ?? '');
-
     if (!isMatch) {
-      throw new UnauthorizedException('Password incorrecto');
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
     if (client.role !== 'admin') {
-      throw new UnauthorizedException('No eres administrador');
+      throw new UnauthorizedException('No tienes permisos de administrador');
     }
 
-    //  Generar JWT
-    const payload = {
-      sub: client.id,
+    const clientId = client.id.toString();
+
+    const accessToken = this.jwtService.sign({
+      sub: clientId,
       username: client.names,
       role: 'admin',
       jti: randomUUID(),
-    };
+    });
 
-    const token = this.jwtService.sign(payload);
+    const refreshToken = randomBytes(64).toString('hex');
+    const hashedToken = createHash('sha256').update(refreshToken).digest('hex');
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    await this.prisma.refreshToken.create({
+      data: {
+        clientId: client.id,
+        hashedToken,
+        expiresAt,
+        deviceName: 'Admin Web',
+        ip: meta?.ip,
+        userAgent: meta?.userAgent,
+      },
+    });
 
     return {
       message: 'Login correcto',
-      token,
+      accessToken,
+      refreshToken,
       user: {
-        id: client.id,
+        id: clientId,
         username: client.names,
+        role: 'admin',
       },
     };
   }
@@ -286,36 +287,34 @@ export class AuthService {
       data.password = await bcrypt.hash(dto.password, 10);
     }
 
-    const updatedClient = await this.clientsService.update(clientId, data);
-    return updatedClient;
+    return this.clientsService.update(clientId, data);
   }
 
   async forgotPassword(email: string) {
-    const client = await this.clientsService.findByEmail(email);
+    const normalizedEmail = email.trim().toLowerCase();
+    const client = await this.clientsService.findByEmail(normalizedEmail);
     if (!client) {
       throw new BadRequestException('El correo no está registrado');
     }
 
     const token = randomBytes(20).toString('hex');
-    const expires = new Date(Date.now() + 3600000); 
+    const expires = new Date(Date.now() + 3600000);
 
     await this.clientsService.update(Number(client.id), {
       reset_token: token,
       reset_token_expires: expires,
     });
 
-    // Configuración del servidor de correos (Ej: Gmail)
     const transporter = nodemailer.createTransport({
       host: this.configService.get<string>('SMTP_HOST') || 'smtp.gmail.com',
       port: Number(this.configService.get('SMTP_PORT')) || 587,
-      secure: this.configService.get('SMTP_SECURE') === 'true', // true para puerto 465
+      secure: this.configService.get('SMTP_SECURE') === 'true',
       auth: {
-        user: this.configService.get<string>('SMTP_USER'), // Tu correo
-        pass: this.configService.get<string>('SMTP_PASS'), // Contraseña de aplicación de tu correo
+        user: this.configService.get<string>('SMTP_USER'),
+        pass: this.configService.get<string>('SMTP_PASS'),
       },
     });
 
-    // Link hacia tu frontend con el token de seguridad
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://192.168.18.35:3000/';
     const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
     const smtpUser = this.configService.get<string>('SMTP_USER');
@@ -323,7 +322,7 @@ export class AuthService {
     try {
       await transporter.sendMail({
         from: `"Soporte ERP" <${smtpUser}>`,
-        to: email, // El correo de la persona que olvidó su contraseña
+        to: normalizedEmail,
         subject: 'Recuperación de contraseña',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
@@ -338,13 +337,13 @@ export class AuthService {
         `,
       });
     } catch (error) {
-      console.error('Error enviando correo:', error);
-      throw new BadRequestException('Hubo un problema intentando enviar el correo electrónico. Por favor intenta más tarde o revisa tu configuración.');
+      throw new BadRequestException(
+        'Hubo un problema intentando enviar el correo electrónico. Por favor intenta más tarde o revisa tu configuración.',
+      );
     }
 
     return {
       message: 'Se ha enviado un correo con las instrucciones para restablecer la contraseña',
-      token, // En producción puedes quitar el token del return para mayor seguridad
     };
   }
 
@@ -370,4 +369,86 @@ export class AuthService {
 
     return { message: 'Contraseña actualizada correctamente' };
   }
+
+  async revokeRefreshToken(refreshToken: string) {
+    const hashedToken = createHash('sha256').update(refreshToken).digest('hex');
+
+    const token = await this.prisma.refreshToken.findUnique({
+      where: { hashedToken },
+    });
+
+    if (!token) {
+      return;
+    }
+
+    await this.prisma.refreshToken.update({
+      where: { id: token.id },
+      data: {
+        revoked: true,
+        revokedReason: 'logout',
+        lastUsedAt: new Date(),
+      },
+    });
+  }
+  // En el service
+async refreshAccessToken(refreshToken: string, meta?: AuthMetadata) {
+  const hashedToken = createHash('sha256').update(refreshToken).digest('hex');
+
+  const stored = await this.prisma.refreshToken.findUnique({
+    where: { hashedToken },
+  });
+
+  if (!stored || stored.revoked || stored.expiresAt < new Date()) {
+    throw new UnauthorizedException('Refresh token inválido o expirado');
+  }
+
+  const client = await this.clientsService.findById(Number(stored.clientId));
+  if (!client) {
+    throw new UnauthorizedException('Cliente no encontrado');
+  }
+
+  // Generar nuevo access token
+  const clientId = client.id.toString();
+  const username = `${client.names || ''} ${client.lastnames || ''}`.trim();
+  const accessToken = this.jwtService.sign({
+    sub: clientId,
+    email: client.email,
+    username,
+    jti: randomUUID(),
+  });
+
+  // Rotar el refresh token (recomendado por seguridad)
+  const newRefreshToken = randomBytes(64).toString('hex');
+  const newHashedToken = createHash('sha256').update(newRefreshToken).digest('hex');
+  const newExpiresAt = new Date();
+  newExpiresAt.setDate(newExpiresAt.getDate() + 7);
+
+  const newTokenRecord = await this.prisma.refreshToken.create({
+    data: {
+      clientId: client.id,
+      hashedToken: newHashedToken,
+      expiresAt: newExpiresAt,
+      ip: meta?.ip,
+      userAgent: meta?.userAgent,
+      deviceName: meta?.deviceName,
+    },
+  });
+
+  // Marcar el viejo como usado/reemplazado
+  await this.prisma.refreshToken.update({
+    where: { id: stored.id },
+    data: {
+      revoked: true,
+      revokedReason: 'rotated',
+      lastUsedAt: new Date(),
+      replacedById: newTokenRecord.id,
+    },
+  });
+
+  return {
+    accessToken,
+    refreshToken: newRefreshToken,
+    user: { id: clientId, username, email: client.email },
+  };
+}
 }

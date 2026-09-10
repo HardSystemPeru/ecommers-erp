@@ -6,6 +6,12 @@ import { HttpService } from '@nestjs/axios';
 export class ClientsService {
   constructor(private readonly prisma: PrismaService,private readonly httpService: HttpService) {}
 
+  private stripPassword<T extends { password?: any }>(client: T | null): T | null {
+    if (!client) return client;
+    const { password, ...safe } = client as any;
+    return safe as T;
+  }
+
   async findAllPaginationInfinity(params: {
     id?: string;
     page?: number;
@@ -37,10 +43,10 @@ export class ClientsService {
     ]);
 
     return {
-      data: data.map((client) => ({
-        ...client,
-        id: client.id.toString(),
-      })),
+      data: data.map((client) => {
+        const { password, ...safe } = client as any;
+        return { ...safe, id: client.id.toString() };
+      }),
       meta: {
         total,
         page,
@@ -52,11 +58,13 @@ export class ClientsService {
   }
 
   async findByEmail(email: string) {
-    return this.prisma.clients.findUnique({ where: { email } });
+    const client = await this.prisma.clients.findUnique({ where: { email } });
+    return this.stripPassword(client) as any;
   }
 
   async findByGoogleId(googleId: string) {
-    return this.prisma.clients.findUnique({ where: { google_id: googleId } });
+    const client = await this.prisma.clients.findUnique({ where: { google_id: googleId } });
+    return this.stripPassword(client) as any;
   }
 
   async create(data: {
@@ -102,6 +110,7 @@ export class ClientsService {
 
   async findOne(id: number) {
     const data = await this.prisma.clients.findUnique({ where: { id } });
+    if (!data) return null;
     
     let unatVerified =false
    try {
@@ -119,14 +128,17 @@ export class ClientsService {
           console.log(error);
    }
 
-    return { ...data, sunat_verfied:unatVerified }
+    const { password, ...safe } = data as any;
+    return { ...safe, id: data.id.toString(), sunat_verfied:unatVerified }
   }
 
   async update(id: number, data: any) {
-    return this.prisma.clients.update({
+    const updated = await this.prisma.clients.update({
       where: { id },
       data,
     });
+    const { password, ...safe } = updated as any;
+    return { ...safe, id: updated.id.toString() };
   }
 
   async consultaEditarClientSunat(user:any,data:any){
@@ -164,6 +176,13 @@ export class ClientsService {
       throw new BadRequestException('Este numero de DNI no es valido');
     }
     
+   }
+
+   async findById(id:number){
+      const client = await this.prisma.clients.findUnique({
+        where: {id:id}
+      })
+      return this.stripPassword(client) as any;
    }
 
 }

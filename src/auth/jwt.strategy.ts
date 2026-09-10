@@ -14,43 +14,42 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
-        (request: any) => {
-          return request?.cookies?.jwt || null;
-        },
-        ExtractJwt.fromAuthHeaderAsBearerToken(), // Fallback por si acaso
+        (req: any) => req?.cookies?.access_token || null,
       ]),
       ignoreExpiration: false,
       secretOrKey: configService.get<string>('JWT_SECRET')!,
     });
   }
-
+ 
   async validate(payload: any) {
-    // Si el token fue revocado (logout / cierre de sesiones), rechazar.
     if (payload.jti && (await this.tokenRevocationService.isRevoked(payload.jti))) {
       throw new UnauthorizedException('Sesión revocada');
     }
-
-    // Si el payload tiene role: 'admin', es un usuario administrador de la tabla 'users'
+ 
     if (payload.role === 'admin') {
+      const admin = await this.clientsService.findById(Number(payload.sub));
+
+      if (!admin || admin.role !== 'admin') {
+        throw new UnauthorizedException('Sesión inválida');
+      }
+
       return {
-        id: payload.sub,
-        username: payload.username,
+        id: admin.id.toString(),
+        username: payload.username ?? admin.names,
         role: 'admin',
         jti: payload.jti,
         exp: payload.exp,
       };
     }
 
-    // De lo contrario, buscamos en la tabla de clientes
-    const client: any = await this.clientsService.findByEmail(payload.email);
+    const client: any = await this.clientsService.findById(Number(payload.sub));
 
     if (!client) {
       throw new UnauthorizedException('Cliente no encontrado');
     }
-
-    // Retornamos el objeto con el rol que tenga en la tabla (si se agregó) o 'client' por defecto
+ 
     return {
-      id: Number(client.id),
+      id: client.id.toString(),
       email: client.email,
       name: `${client.names || ''} ${client.lastnames || ''}`.trim(),
       role: client.role || 'client',

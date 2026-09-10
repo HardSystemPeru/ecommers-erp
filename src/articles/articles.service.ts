@@ -10,7 +10,7 @@ export class ArticlesService {
     private configService: ConfigService,
   ) { }
   async findAll(params: {
-    page?: number;
+page?: number;
     limit?: number;
     search?: string;
     minPrice?: number;
@@ -428,9 +428,7 @@ has_offer: article.has_offer ? 1 : 0,
       description: combo.description,
       image_build: this.formatBuildImageUrl(combo.image_build),
       total_price: combo.total_price,
-      total_price_soles: dollarRate > 0
-        ? parseFloat((combo.total_price * dollarRate).toFixed(2))
-        : null,
+      total_price_soles: dollarRate > 0 ? parseFloat((combo.total_price * dollarRate).toFixed(2)): null,
       created_at: combo.created_at,
       updated_at: combo.updated_at,
       items: combo.build_detail_pc_tabla.map((detail) => ({
@@ -438,35 +436,22 @@ has_offer: article.has_offer ? 1 : 0,
         article_id: detail.articles.id.toString(),
         cod_fab: detail.articles.cod_fab,
         description: detail.articles.description,
-        public_price: detail.articles.public_price
-          ? parseFloat(detail.articles.public_price.toString())
-          : null,
-        public_price_soles: detail.articles.public_price
-          ? parseFloat(
-              (
+        public_price: detail.articles.public_price ? parseFloat(detail.articles.public_price.toString()) : null,
+        public_price_soles: detail.articles.public_price ? parseFloat((
                 detail.articles.currency_type_id?.toString() === '1'
                   ? parseFloat(detail.articles.public_price.toString())
                   : parseFloat(detail.articles.public_price.toString()) * dollarRate
-              ).toFixed(2),
-            )
-          : null,
-        public_price_dolares: detail.articles.public_price
-          ? parseFloat(
-              (
+              ).toFixed(2),) : null,
+        public_price_dolares: detail.articles.public_price ? parseFloat((
                 detail.articles.currency_type_id?.toString() === '2'
                   ? parseFloat(detail.articles.public_price.toString())
                   : dollarRate > 0 ? parseFloat(detail.articles.public_price.toString()) / dollarRate : 0
-              ).toFixed(2),
-            )
-          : null,
-        category: detail.articles.categories
-          ? {
+              ).toFixed(2),): null,
+        category: detail.articles.categories? {
               id: detail.articles.categories.id.toString(),
               name: detail.articles.categories.name,
-            }
-          : null,
-        brand: detail.articles.brands
-          ? {
+            }: null,
+        brand: detail.articles.brands ? {
               id: detail.articles.brands.id.toString(),
               name: detail.articles.brands.name,
             }
