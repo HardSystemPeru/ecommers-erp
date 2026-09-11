@@ -57,8 +57,10 @@ export class HeroSliderController {
   findAll( 
     @Query('name') search?: string,
     @Query('orden') orden?: string,
+    @Query('category_id') category_id?: string,
+    @Query('sub_category_id') sub_category_id?: string,
   ) {
-    return this.heroSliderService.findAll({  search,orden });
+    return this.heroSliderService.findAll({  search,orden, category_id, sub_category_id });
   }
 
   @Get(':id')

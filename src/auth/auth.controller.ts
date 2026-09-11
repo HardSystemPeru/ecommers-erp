@@ -74,7 +74,7 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.CREATED)
   async logout(@Req() request: Request, @Res({ passthrough: true }) response: Response,) {
-    // Revoca access aunque esté expirado (10s DEBUG) — decodifica sin verificar expiración
+
     const accessToken = (request as any).cookies?.access_token as string | undefined;
     if (accessToken) {
       try {

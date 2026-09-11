@@ -420,50 +420,77 @@ has_offer: article.has_offer ? 1 : 0,
     }));
 
     // ── Formatear combos y fusionar en data ───────────────────────────────
-    const formattedCombos = finalCombos.map((combo) => ({
-      id: combo.id.toString(),
-      type: 'combo',
-      name: combo.name,
-      slug: combo.slug,
-      description: combo.description,
-      image_build: this.formatBuildImageUrl(combo.image_build),
-      total_price: combo.total_price,
-      total_price_soles: dollarRate > 0 ? parseFloat((combo.total_price * dollarRate).toFixed(2)): null,
-      created_at: combo.created_at,
-      updated_at: combo.updated_at,
-      items: combo.build_detail_pc_tabla.map((detail) => ({
-        quantity: detail.quantity,
-        article_id: detail.articles.id.toString(),
-        cod_fab: detail.articles.cod_fab,
-        description: detail.articles.description,
-        public_price: detail.articles.public_price ? parseFloat(detail.articles.public_price.toString()) : null,
-        public_price_soles: detail.articles.public_price ? parseFloat((
-                detail.articles.currency_type_id?.toString() === '1'
-                  ? parseFloat(detail.articles.public_price.toString())
-                  : parseFloat(detail.articles.public_price.toString()) * dollarRate
-              ).toFixed(2),) : null,
-        public_price_dolares: detail.articles.public_price ? parseFloat((
-                detail.articles.currency_type_id?.toString() === '2'
-                  ? parseFloat(detail.articles.public_price.toString())
-                  : dollarRate > 0 ? parseFloat(detail.articles.public_price.toString()) / dollarRate : 0
-              ).toFixed(2),): null,
-        category: detail.articles.categories? {
-              id: detail.articles.categories.id.toString(),
-              name: detail.articles.categories.name,
-            }: null,
-        brand: detail.articles.brands ? {
-              id: detail.articles.brands.id.toString(),
-              name: detail.articles.brands.name,
-            }
-          : null,
-        article_images: detail.articles.article_images.map(img => ({
-          id: img.id.toString(),
-          url: this.formatImageUrl(img.url),
-          position: img.position,
-          is_main: img.is_main,
-        })),
-      })),
-    }));
+    // stock para combos (saldo por componente) — misma vista que usa stocks-articles
+    const allComboArticleIds = finalCombos.flatMap((c) => c.build_detail_pc_tabla.map((d) => d.articles.id));
+    const comboStockRows: any[] = allComboArticleIds.length ? await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(allComboArticleIds)})` : [];
+    const comboStockMap = new Map<string, number>();
+    comboStockRows.forEach((r: any) => comboStockMap.set(String(r.article_id), Number(r.saldo)));
+    // Precios de combos vienen de la suma de sus artículos (como artículos normales), no de combo.total_price (estaba en 0)
+    const formattedCombos = finalCombos.map((combo) => {
+      // Calcular totales dinámicos desde artículos para precio correcto
+      let calcTotalDolares = 0;
+      let calcTotalSoles = 0;
+      const comboItems = combo.build_detail_pc_tabla.map((detail) => {
+        const art = detail.articles;
+        const pubPrice = art.public_price ? parseFloat(art.public_price.toString()) : 0;
+        const currencyStr = art.currency_type_id?.toString();
+        const priceSoles = parseFloat((currencyStr === '1' ? pubPrice : pubPrice * dollarRate).toFixed(2));
+        const priceDolares = parseFloat((currencyStr === '2' ? pubPrice : dollarRate > 0 ? pubPrice / dollarRate : 0).toFixed(2));
+        calcTotalSoles += priceSoles * detail.quantity;
+        calcTotalDolares += priceDolares * detail.quantity;
+        return {
+          quantity: detail.quantity,
+          article_id: art.id.toString(),
+          cod_fab: art.cod_fab,
+          description: art.description,
+          public_price: art.public_price ? parseFloat(art.public_price.toString()) : null,
+          public_price_soles: art.public_price ? parseFloat((
+                  currencyStr === '1'
+                    ? parseFloat(art.public_price.toString())
+                    : parseFloat(art.public_price.toString()) * dollarRate
+                ).toFixed(2),) : null,
+          public_price_dolares: art.public_price ? parseFloat((
+                  currencyStr === '2'
+                    ? parseFloat(art.public_price.toString())
+                    : dollarRate > 0 ? parseFloat(art.public_price.toString()) / dollarRate : 0
+                ).toFixed(2),): null,
+          saldo: comboStockMap.get(String(art.id)) ?? 0,
+          category: art.categories? {
+                id: art.categories.id.toString(),
+                name: art.categories.name,
+              }: null,
+          brand: art.brands ? {
+                id: art.brands.id.toString(),
+                name: art.brands.name,
+              }
+            : null,
+          article_images: art.article_images.map(img => ({
+            id: img.id.toString(),
+            url: this.formatImageUrl(img.url),
+            position: img.position,
+            is_main: img.is_main,
+          })),
+        };
+      });
+      const calcTotalPrice = parseFloat(calcTotalDolares.toFixed(2));
+      const calcTotalPriceSoles = parseFloat(calcTotalSoles.toFixed(2));
+      // Fallback a total_price guardado si la suma es 0 (evita romper combos vacíos)
+      const finalTotalPrice = calcTotalPrice > 0 ? calcTotalPrice : combo.total_price;
+      const finalTotalPriceSoles = calcTotalSoles > 0 ? calcTotalPriceSoles : (dollarRate > 0 ? parseFloat((combo.total_price * dollarRate).toFixed(2)) : null);
+      return {
+        id: combo.id.toString(),
+        type: 'combo',
+        name: combo.name,
+        slug: combo.slug,
+        description: combo.description,
+        image_build: this.formatBuildImageUrl(combo.image_build),
+        total_price: finalTotalPrice,
+        total_price_soles: finalTotalPriceSoles,
+        created_at: combo.created_at,
+        updated_at: combo.updated_at,
+        items: comboItems,
+      };
+    });
 
     // Los combos se mezclan dentro de data para que el frontend los reciba en un solo array
     const dataWithCombos = [...data, ...formattedCombos];
@@ -496,97 +523,122 @@ has_offer: article.has_offer ? 1 : 0,
       },
     });
 
-    if (!article) throw new NotFoundException(`Artículo con slug "${slug}" no encontrado`);
-
-    // Validar stock > 0 (v_article_stock_global.saldo) - si no hay stock no debe mostrarse en web
-    const stockCheck: any[] = await this.prisma.$queryRaw`SELECT saldo FROM v_article_stock_global WHERE article_id = ${article.id}`;
-    if (!stockCheck[0] || Number(stockCheck[0].saldo) <= 0) {
-      throw new NotFoundException(`Artículo con slug "${slug}" no encontrado`);
+    if (article) {
+      // Validar stock > 0 (v_article_stock_global.saldo) - si no hay stock, intentar combo antes de fallar
+      const stockCheck: any[] = await this.prisma.$queryRaw`SELECT saldo FROM v_article_stock_global WHERE article_id = ${article.id}`;
+      if (stockCheck[0] && Number(stockCheck[0].saldo) > 0) {
+        const exchangeRateArt = await this.prisma.exchange_rates.findFirst({ orderBy: { date: 'desc' } });
+        const dollarRateArt = exchangeRateArt ? Number(exchangeRateArt.parallel_rate) : 0;
+        let subCategoryArt: any = null;
+        if (article.sub_category_id) {
+          subCategoryArt = await this.prisma.sub_categories.findUnique({ where: { id: article.sub_category_id } });
+        }
+        // retornar artículo (mismo bloque de abajo, pero ya con stock válido)
+        const matched = article;
+        return {
+          type: 'article' as const,
+          name: matched.description,
+          ...matched,
+          id: matched.id.toString(),
+          measurement_unit_id: matched.measurement_unit_id?.toString(),
+          brand_id: matched.brand_id?.toString(),
+          category_id: matched.category_id?.toString(),
+          sub_category_id: matched.sub_category_id?.toString(),
+          currency_type_id: matched.currency_type_id?.toString(),
+          company_type_id: matched.company_type_id?.toString(),
+          user_id: matched.user_id?.toString(),
+          last_supplier: matched.last_supplier?.toString(),
+          last_entry_guide: matched.last_entry_guide?.toString(),
+          article_type_id: matched.article_type_id?.toString(),
+          precio_public_soles: matched.public_price ? Number((matched.currency_type_id?.toString() === '1' ? Number(matched.public_price) : Number(matched.public_price) * Number(dollarRateArt)).toFixed(2)) : null,
+          precio_public_dolares: matched.public_price ? Number((matched.currency_type_id?.toString() === '2' ? Number(matched.public_price) : dollarRateArt > 0 ? Number(matched.public_price) / Number(dollarRateArt) : 0).toFixed(2)) : null,
+          precio_porcentaje: matched.public_price ? Number(((matched.currency_type_id?.toString() === '1' ? Number(matched.public_price) : Number(matched.public_price) * Number(dollarRateArt)) * (1 - Number(matched.offer_price_percent || 0) / 100)).toFixed(2)) : null,
+          precio_porcentaje_dolares: matched.public_price ? Number(((matched.currency_type_id?.toString() === '2' ? Number(matched.public_price) : dollarRateArt > 0 ? Number(matched.public_price) / Number(dollarRateArt) : 0) * (1 - Number(matched.offer_price_percent || 0) / 100)).toFixed(2)) : null,
+          is_new_for_web: matched.is_new_for_web ? 1 : 0,
+          has_offer: matched.has_offer ? 1 : 0,
+          offer_price_percent: matched.offer_price_percent ? Number(matched.offer_price_percent) : 0,
+          categories: matched.categories ? { ...matched.categories, id: matched.categories.id.toString() } : null,
+          brands: matched.brands ? { ...matched.brands, id: matched.brands.id.toString() } : null,
+          sub_categories: subCategoryArt ? { ...subCategoryArt, id: subCategoryArt.id.toString() } : null,
+          public_price: matched.public_price ? parseFloat(matched.public_price.toString()) : null,
+          purchase_price: matched.purchase_price ? parseFloat(matched.purchase_price.toString()) : null,
+          distributor_price: matched.distributor_price ? parseFloat(matched.distributor_price.toString()) : null,
+          authorized_price: matched.authorized_price ? parseFloat(matched.authorized_price.toString()) : null,
+          total_reviews: matched.reviews.length,
+          average_rating: matched.reviews.length > 0 ? parseFloat((matched.reviews.reduce((sum, r) => sum + r.rating, 0) / matched.reviews.length).toFixed(1)) : 0,
+        };
+      }
     }
 
-    const matched = article;
-
-    const exchangeRate = await this.prisma.exchange_rates.findFirst({
-      orderBy: { date: 'desc' },
+    // No es artículo o sin stock — buscar combo por slug (misma tabla que usa GET /articles/{id} por id)
+    const comboBySlug = await this.prisma.build_pc_tabla.findFirst({
+      where: { slug },
+      include: {
+        build_detail_pc_tabla: {
+          include: {
+            articles: {
+              include: {
+                article_images: { orderBy: { position: 'asc' } },
+                categories: true,
+                brands: true,
+              },
+            },
+          },
+        },
+      },
     });
-    const dollarRate = exchangeRate ? Number(exchangeRate.parallel_rate) : 0;
-
-    let subCategory: any = null;
-    if (matched.sub_category_id) {
-      subCategory = await this.prisma.sub_categories.findUnique({
-        where: { id: matched.sub_category_id },
+    if (comboBySlug) {
+      const exchangeRate = await this.prisma.exchange_rates.findFirst({ orderBy: { date: 'desc' } });
+      const dollarRate = exchangeRate ? Number(exchangeRate.parallel_rate) : 0;
+      // stock por componente para saldo en items[]
+      const articleIds = comboBySlug.build_detail_pc_tabla.map((d) => d.articles.id);
+      const stockRows: any[] = articleIds.length ? await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})` : [];
+      const stockMap = new Map<string, number>();
+      stockRows.forEach((r: any) => stockMap.set(String(r.article_id), Number(r.saldo)));
+      let calcTotalDolares = 0;
+      let calcTotalSoles = 0;
+      comboBySlug.build_detail_pc_tabla.forEach((detail) => {
+        const pubPrice = detail.articles.public_price ? parseFloat(detail.articles.public_price.toString()) : 0;
+        const currencyStr = detail.articles.currency_type_id?.toString();
+        const priceSoles = parseFloat((currencyStr === '1' ? pubPrice : pubPrice * dollarRate).toFixed(2));
+        const priceDolares = parseFloat((currencyStr === '2' ? pubPrice : dollarRate > 0 ? pubPrice / dollarRate : 0).toFixed(2));
+        calcTotalSoles += priceSoles * detail.quantity;
+        calcTotalDolares += priceDolares * detail.quantity;
       });
+      const calcTotalPrice = parseFloat(calcTotalDolares.toFixed(2));
+      const calcTotalPriceSoles = parseFloat(calcTotalSoles.toFixed(2));
+      const finalTotalPrice = calcTotalPrice > 0 ? calcTotalPrice : comboBySlug.total_price;
+      const finalTotalPriceSoles = calcTotalSoles > 0 ? calcTotalPriceSoles : (dollarRate > 0 ? parseFloat((comboBySlug.total_price * dollarRate).toFixed(2)) : null);
+      return {
+        id: comboBySlug.id.toString(),
+        type: 'combo' as const,
+        name: comboBySlug.name,
+        slug: comboBySlug.slug,
+        description: comboBySlug.description,
+        total_price: finalTotalPrice,
+        total_price_soles: finalTotalPriceSoles,
+        image_build: this.formatBuildImageUrl(comboBySlug.image_build),
+        created_at: comboBySlug.created_at,
+        updated_at: comboBySlug.updated_at,
+        items: comboBySlug.build_detail_pc_tabla.map((detail) => ({
+          quantity: detail.quantity,
+          article_id: detail.articles.id.toString(),
+          cod_fab: detail.articles.cod_fab,
+          description: detail.articles.description,
+          slug: detail.articles.slug,
+          name: detail.articles.description,
+          public_price: detail.articles.public_price ? parseFloat(detail.articles.public_price.toString()) : null,
+          public_price_soles: detail.articles.public_price ? parseFloat((detail.articles.currency_type_id?.toString() === '1' ? parseFloat(detail.articles.public_price.toString()) : parseFloat(detail.articles.public_price.toString()) * dollarRate).toFixed(2)) : null,
+          public_price_dolares: detail.articles.public_price ? parseFloat((detail.articles.currency_type_id?.toString() === '2' ? parseFloat(detail.articles.public_price.toString()) : dollarRate > 0 ? parseFloat(detail.articles.public_price.toString()) / dollarRate : 0).toFixed(2)) : null,
+          saldo: stockMap.get(String(detail.articles.id)) ?? 0,
+          category: detail.articles.categories ? { id: detail.articles.categories.id.toString(), name: detail.articles.categories.name } : null,
+          brand: detail.articles.brands ? { id: detail.articles.brands.id.toString(), name: detail.articles.brands.name } : null,
+          article_images: detail.articles.article_images.map((img: any) => ({ id: img.id.toString(), url: this.formatImageUrl(img.url), position: img.position, is_main: img.is_main })),
+        })),
+      };
     }
 
-    return {
-      type: 'article' as const,
-      name: matched.description,
-        ...matched,
-      id: matched.id.toString(),
-      measurement_unit_id: matched.measurement_unit_id?.toString(),
-      brand_id: matched.brand_id?.toString(),
-      category_id: matched.category_id?.toString(),
-      sub_category_id: matched.sub_category_id?.toString(),
-      currency_type_id: matched.currency_type_id?.toString(),
-      company_type_id: matched.company_type_id?.toString(),
-      user_id: matched.user_id?.toString(),
-      last_supplier: matched.last_supplier?.toString(),
-      last_entry_guide: matched.last_entry_guide?.toString(),
-      article_type_id: matched.article_type_id?.toString(),
-      precio_public_soles: matched.public_price
-        ? Number(
-            (matched.currency_type_id?.toString() === '1'
-              ? Number(matched.public_price)
-              : Number(matched.public_price) * Number(dollarRate)
-            ).toFixed(2),
-          )
-        : null,
-      precio_public_dolares: matched.public_price
-        ? Number(
-            (matched.currency_type_id?.toString() === '2'
-              ? Number(matched.public_price)
-              : dollarRate > 0
-                ? Number(matched.public_price) / Number(dollarRate)
-                : 0
-            ).toFixed(2),
-          )
-        : null,
-      precio_porcentaje: matched.public_price
-        ? Number(
-            ((matched.currency_type_id?.toString() === '1'
-              ? Number(matched.public_price)
-              : Number(matched.public_price) * Number(dollarRate)
-            ) * (1 - Number(matched.offer_price_percent || 0) / 100)).toFixed(2),
-          )
-        : null,
-      precio_porcentaje_dolares: matched.public_price
-        ? Number(
-            ((matched.currency_type_id?.toString() === '2'
-              ? Number(matched.public_price)
-              : dollarRate > 0
-                ? Number(matched.public_price) / Number(dollarRate)
-                : 0
-            ) * (1 - Number(matched.offer_price_percent || 0) / 100)).toFixed(2),
-          )
-        : null,
-      is_new_for_web: matched.is_new_for_web ? 1 : 0,
-      has_offer: matched.has_offer ? 1 : 0,
-      offer_price_percent: matched.offer_price_percent ? Number(matched.offer_price_percent) : 0,
-      categories: matched.categories ? { ...matched.categories, id: matched.categories.id.toString() } : null,
-      brands: matched.brands ? { ...matched.brands, id: matched.brands.id.toString() } : null,
-      sub_categories: subCategory ? { ...subCategory, id: subCategory.id.toString() } : null,
-      public_price: matched.public_price ? parseFloat(matched.public_price.toString()) : null,
-      purchase_price: matched.purchase_price ? parseFloat(matched.purchase_price.toString()) : null,
-      distributor_price: matched.distributor_price ? parseFloat(matched.distributor_price.toString()) : null,
-      authorized_price: matched.authorized_price ? parseFloat(matched.authorized_price.toString()) : null,
-      total_reviews: matched.reviews.length,
-      average_rating:
-        matched.reviews.length > 0
-          ? parseFloat(
-              (matched.reviews.reduce((sum, r) => sum + r.rating, 0) / matched.reviews.length).toFixed(1),
-            )
-          : 0,
-    };
+    throw new NotFoundException(`Artículo con slug "${slug}" no encontrado`);
   }
 
   async findOne(id: number) {
@@ -740,16 +792,33 @@ has_offer: article.has_offer ? 1 : 0,
     });
 
     if (combo) {
+      const articleIdsCombo = combo.build_detail_pc_tabla.map((d) => d.articles.id);
+      const stockRowsCombo: any[] = articleIdsCombo.length ? await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIdsCombo)})` : [];
+      const stockMapCombo = new Map<string, number>();
+      stockRowsCombo.forEach((r: any) => stockMapCombo.set(String(r.article_id), Number(r.saldo)));
+      // Calcular precios desde artículos (como listado normal) — corrige total_price 0
+      let calcTotalDolares = 0;
+      let calcTotalSoles = 0;
+      combo.build_detail_pc_tabla.forEach((detail) => {
+        const pubPrice = detail.articles.public_price ? parseFloat(detail.articles.public_price.toString()) : 0;
+        const currencyStr = detail.articles.currency_type_id?.toString();
+        const priceSoles = parseFloat((currencyStr === '1' ? pubPrice : pubPrice * dollarRate).toFixed(2));
+        const priceDolares = parseFloat((currencyStr === '2' ? pubPrice : dollarRate > 0 ? pubPrice / dollarRate : 0).toFixed(2));
+        calcTotalSoles += priceSoles * detail.quantity;
+        calcTotalDolares += priceDolares * detail.quantity;
+      });
+      const calcTotalPrice = parseFloat(calcTotalDolares.toFixed(2));
+      const calcTotalPriceSoles = parseFloat(calcTotalSoles.toFixed(2));
+      const finalTotalPrice = calcTotalPrice > 0 ? calcTotalPrice : combo.total_price;
+      const finalTotalPriceSoles = calcTotalSoles > 0 ? calcTotalPriceSoles : (dollarRate > 0 ? parseFloat((combo.total_price * dollarRate).toFixed(2)) : null);
       return {
         id: combo.id.toString(),
         type: 'combo' as const,
         name: combo.name,
       slug: combo.slug,
       description: combo.description,
-      total_price: combo.total_price,
-        total_price_soles: dollarRate > 0
-          ? parseFloat((combo.total_price * dollarRate).toFixed(2))
-          : null,
+      total_price: finalTotalPrice,
+        total_price_soles: finalTotalPriceSoles,
         image_build: this.formatBuildImageUrl(combo.image_build),
         created_at: combo.created_at,
         updated_at: combo.updated_at,
@@ -781,6 +850,7 @@ has_offer: article.has_offer ? 1 : 0,
                 ).toFixed(2),
               )
             : null,
+          saldo: stockMapCombo.get(String(detail.articles.id)) ?? 0,
           category: detail.articles.categories
             ? {
               id: detail.articles.categories.id.toString(),
@@ -933,10 +1003,30 @@ has_offer: article.has_offer ? 1 : 0,
     return this.formatImageUrl(url);
   }
   
-async  stocksArticles(id:number){
-      const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id , saldo FROM v_article_stock_global WHERE article_id = ${id}`;
-      return stockRows[0]
-}
+ async stocksArticles(id: number) {
+    // Si es combo, devolver saldo mínimo de sus componentes (cuánto combos se pueden armar)
+    const combo = await this.prisma.build_pc_tabla.findUnique({
+      where: { id: BigInt(id) },
+      include: { build_detail_pc_tabla: true },
+    });
+    if (combo) {
+      const articleIds = combo.build_detail_pc_tabla.map((d) => d.article_id);
+      if (articleIds.length === 0) return { article_id: String(id), saldo: 0 };
+      const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})`;
+      const stockMap = new Map<string, number>();
+      stockRows.forEach((r: any) => stockMap.set(String(r.article_id), Number(r.saldo)));
+      // saldo del combo = mínimo de (saldo / quantity) entre componentes, floor
+      let minSaldo: number | null = null;
+      for (const d of combo.build_detail_pc_tabla) {
+        const saldo = stockMap.get(String(d.article_id)) ?? 0;
+        const perCombo = Math.floor(saldo / d.quantity);
+        if (minSaldo === null || perCombo < minSaldo) minSaldo = perCombo;
+      }
+      return { article_id: String(id), saldo: minSaldo ?? 0 };
+    }
+    const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id , saldo FROM v_article_stock_global WHERE article_id = ${BigInt(id)}`;
+    return stockRows[0] ?? { article_id: String(id), saldo: 0 };
+  }
 
 }
  

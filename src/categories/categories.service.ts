@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import slugify from 'slugify';
 
 @Injectable()
 export class CategoriesService {
@@ -22,6 +23,27 @@ export class CategoriesService {
     const baseUrl =
       this.configService.get('APP_URL') || 'http://192.168.18.26:3000';
     return `${baseUrl}${url}`;
+  }
+
+  static generateCategorySlug(name: string, id: number | bigint): string {
+    const base = name
+      .toLowerCase()
+      .replace(/\|/g, ' ')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const truncated = base.length <= 50 ? base : base.slice(0, 50).replace(/-[^-]*$/, '');
+    return `${truncated}-${id}`;
+  }
+
+  private generateCategorySlug(name: string, id: number | bigint): string {
+    return CategoriesService.generateCategorySlug(name, id);
+  }
+
+  // alternativa usando slugify lib manteniendo compat con articulos
+  private generateSlugWithLib(name: string, id: number | bigint): string {
+    const base = slugify(name, { lower: true, strict: true });
+    const truncated = base.length <= 50 ? base : base.slice(0, 50).replace(/-[^-]*$/, '');
+    return `${truncated}-${id}`;
   }
 
   private async getValidSubCategoryIds(): Promise<bigint[]> {
@@ -59,10 +81,17 @@ export class CategoriesService {
       },
     });
 
+    // Generar slug estable tipo "notebook-17" (mismo criterio que articulos)
+    const slug = this.generateCategorySlug(category.name!, Number(category.id));
+    const updated = await this.prisma.categories.update({
+      where: { id: category.id },
+      data: { slug },
+    });
+
     return {
-      ...category,
-      id: category.id.toString(),
-      image_url: this.formatImageUrl(category.image_url),
+      ...updated,
+      id: updated.id.toString(),
+      image_url: this.formatImageUrl(updated.image_url),
     };
   }
 
@@ -85,12 +114,21 @@ export class CategoriesService {
       imageUrl = `/storage/categories/${file.filename}`;
     }
 
+    const finalData: any = {};
+    if (updateCategoryDto.name !== undefined) finalData.name = updateCategoryDto.name;
+    if ((updateCategoryDto as any).st_concept !== undefined) finalData.st_concept = (updateCategoryDto as any).st_concept;
+    if ((updateCategoryDto as any).status !== undefined) finalData.status = (updateCategoryDto as any).status;
+    // slug: si viene explícito usarlo, si cambia nombre generarlo, si no mantener existente
+    if ((updateCategoryDto as any).slug !== undefined) {
+      finalData.slug = (updateCategoryDto as any).slug || null;
+    } else if (updateCategoryDto.name && updateCategoryDto.name !== existing.name) {
+      finalData.slug = this.generateCategorySlug(updateCategoryDto.name, Number(categoryId));
+    }
+    if (imageUrl !== undefined) finalData.image_url = imageUrl;
+
     const category = await this.prisma.categories.update({
       where: { id: categoryId },
-      data: {
-        ...updateCategoryDto,
-        image_url: imageUrl !== undefined ? imageUrl : existing.image_url,
-      },
+      data: finalData,
     });
 
     return {

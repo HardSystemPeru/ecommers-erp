@@ -15,7 +15,8 @@ export class CreateHeroSliderDto {
 
   @IsInt()
   @Type(() => Number)
-  order: number;
+  @IsOptional()
+  order?: number;
 
   @IsBoolean()
   @IsOptional()
@@ -25,4 +26,12 @@ export class CreateHeroSliderDto {
   @IsString()
   @IsOptional()
   name?: string;
+
+  @IsString()
+  @IsOptional()
+  category_id?: string;
+
+  @IsString()
+  @IsOptional()
+  sub_category_id?: string;
 }

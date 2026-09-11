@@ -8,6 +8,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { BrandsModule } from './brands/brands.module';
 import { SubCategoriesModule } from './sub-categories/sub-categories.module';
 import { FavoritesModule } from './favorites/favorites.module';
+import { CartModule } from './cart/cart.module';
 import { ArticleImageModule } from './article_images/article_image.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { OrdersModule } from './orders/orders.module';
@@ -39,6 +40,7 @@ import { CsrfGuard } from './auth/csrf/csrf.guard';
     BrandsModule,
     SubCategoriesModule,
     FavoritesModule,
+    CartModule,
     ArticleImageModule,
     ReviewsModule,
     OrdersModule,

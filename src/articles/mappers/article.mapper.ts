@@ -145,75 +145,87 @@ export class ArticleMapper {
   }
 
   static toComboResponse(combo: any, dollarRate: number, baseUrl: string) {
+    let calcTotalDolares = 0;
+    let calcTotalSoles = 0;
+    const items = (combo.build_detail_pc_tabla || []).map((detail: any) => {
+      const detailArticle = detail.articles;
+      const publicPrice = detailArticle.public_price
+        ? parseFloat(detailArticle.public_price.toString())
+        : null;
+      
+      const currencyTypeStr = detailArticle.currency_type_id?.toString();
+
+      const public_price_soles = publicPrice
+        ? parseFloat(
+            (
+              currencyTypeStr === '1'
+                ? publicPrice
+                : publicPrice * dollarRate
+            ).toFixed(2)
+          )
+        : null;
+
+      const public_price_dolares = publicPrice
+        ? parseFloat(
+            (
+              currencyTypeStr === '2'
+                ? publicPrice
+                : dollarRate > 0 ? publicPrice / dollarRate : 0
+            ).toFixed(2)
+          )
+        : null;
+
+      if (publicPrice !== null) {
+        const pSoles = parseFloat((currencyTypeStr === '1' ? publicPrice : publicPrice * dollarRate).toFixed(2));
+        const pDolares = parseFloat((currencyTypeStr === '2' ? publicPrice : dollarRate > 0 ? publicPrice / dollarRate : 0).toFixed(2));
+        calcTotalSoles += pSoles * detail.quantity;
+        calcTotalDolares += pDolares * detail.quantity;
+      }
+
+      return {
+        quantity: detail.quantity,
+        article_id: detailArticle.id.toString(),
+        cod_fab: detailArticle.cod_fab,
+        description: detailArticle.description,
+        name: detailArticle.description,
+        public_price: publicPrice,
+        public_price_soles,
+        public_price_dolares,
+        category: detailArticle.categories
+          ? {
+              id: detailArticle.categories.id.toString(),
+              name: detailArticle.categories.name,
+            }
+          : null,
+        brand: detailArticle.brands
+          ? {
+              id: detailArticle.brands.id.toString(),
+              name: detailArticle.brands.name,
+            }
+          : null,
+        article_images: (detailArticle.article_images || []).map((img: any) => ({
+          id: img.id.toString(),
+          url: this.formatImageUrl(img.url, baseUrl),
+          position: img.position,
+          is_main: img.is_main,
+        })),
+      };
+    });
+    const calcTotalPrice = parseFloat(calcTotalDolares.toFixed(2));
+    const calcTotalPriceSoles = parseFloat(calcTotalSoles.toFixed(2));
+    const finalTotalPrice = calcTotalPrice > 0 ? calcTotalPrice : combo.total_price;
+    const finalTotalPriceSoles = calcTotalSoles > 0 ? calcTotalPriceSoles : dollarRate > 0 ? parseFloat((combo.total_price * dollarRate).toFixed(2)) : null;
     return {
       id: combo.id.toString(),
       type: 'combo',
       name: combo.name,
       description: combo.description,
       image_build: this.formatImageUrl(combo.image_build, baseUrl),
-      total_price: combo.total_price,
-      total_price_soles: dollarRate > 0
-        ? parseFloat((combo.total_price * dollarRate).toFixed(2))
-        : null,
+      total_price: finalTotalPrice,
+      total_price_soles: finalTotalPriceSoles,
       created_at: combo.created_at,
       updated_at: combo.updated_at,
-      items: (combo.build_detail_pc_tabla || []).map((detail: any) => {
-        const detailArticle = detail.articles;
-        const publicPrice = detailArticle.public_price
-          ? parseFloat(detailArticle.public_price.toString())
-          : null;
-        
-        const currencyTypeStr = detailArticle.currency_type_id?.toString();
-
-        const public_price_soles = publicPrice
-          ? parseFloat(
-              (
-                currencyTypeStr === '1'
-                  ? publicPrice
-                  : publicPrice * dollarRate
-              ).toFixed(2)
-            )
-          : null;
-
-        const public_price_dolares = publicPrice
-          ? parseFloat(
-              (
-                currencyTypeStr === '2'
-                  ? publicPrice
-                  : dollarRate > 0 ? publicPrice / dollarRate : 0
-              ).toFixed(2)
-            )
-          : null;
-
-        return {
-          quantity: detail.quantity,
-          article_id: detailArticle.id.toString(),
-          cod_fab: detailArticle.cod_fab,
-          description: detailArticle.description,
-          name: detailArticle.description,
-          public_price: publicPrice,
-          public_price_soles,
-          public_price_dolares,
-          category: detailArticle.categories
-            ? {
-                id: detailArticle.categories.id.toString(),
-                name: detailArticle.categories.name,
-              }
-            : null,
-          brand: detailArticle.brands
-            ? {
-                id: detailArticle.brands.id.toString(),
-                name: detailArticle.brands.name,
-              }
-            : null,
-          article_images: (detailArticle.article_images || []).map((img: any) => ({
-            id: img.id.toString(),
-            url: this.formatImageUrl(img.url, baseUrl),
-            position: img.position,
-            is_main: img.is_main,
-          })),
-        };
-      }),
+      items,
     };
   }
 }

@@ -38,30 +38,34 @@ export class HeroSliderService {
          SELECT name, orden FROM hero_slides WHERE name = ${createHeroSliderDto.name}
          ORDER BY orden ASC
  `;   
-     
+      
        const nextOrden = selectName ? selectName?.[selectName.length - 1]?.orden + 1 : 0;
-    
+     
       const slide = await this.prisma.hero_slides.create({
       data: {
         title: createHeroSliderDto.title,
         subtitle: createHeroSliderDto.subtitle,
         image: imageUrl,
-        link: createHeroSliderDto.link,
-        orden: Number(nextOrden) || 0,
+        link: createHeroSliderDto.link || null,
+        orden: createHeroSliderDto.order !== undefined ? Number(createHeroSliderDto.order) : (Number(nextOrden) || 0),
         active: createHeroSliderDto.active !== false,
         name: createHeroSliderDto.name || "",
+        category_id: createHeroSliderDto.category_id ? BigInt(createHeroSliderDto.category_id) : null,
+        sub_category_id: createHeroSliderDto.sub_category_id ? BigInt(createHeroSliderDto.sub_category_id) : null,
       },
     });
 
     return {
       ...slide,
       id: slide.id.toString(),
+      category_id: slide.category_id?.toString() ?? null,
+      sub_category_id: slide.sub_category_id?.toString() ?? null,
       image: this.formatImageUrl(slide.image),
     };
   }
 
-async findAll(params: { search?: string, orden?: string }) {
-  const { search, orden } = params;
+async findAll(params: { search?: string, orden?: string, category_id?: string, sub_category_id?: string }) {
+  const { search, orden, category_id, sub_category_id } = params;
 
   const where: any = {};
 
@@ -73,6 +77,16 @@ async findAll(params: { search?: string, orden?: string }) {
     where.orden = Number(orden);
   }
 
+  if (category_id !== undefined) {
+    where.category_id = category_id ? BigInt(category_id) : null;
+  }
+  if (sub_category_id !== undefined) {
+    where.sub_category_id = sub_category_id ? BigInt(sub_category_id) : null;
+  }
+
+  // Se eliminó el filtro forzoso de category_id = null para que el listado
+  // traiga todos los slides (incluidos los que tienen categoría), y el frontend
+  // pueda filtrar por categoría si lo desea. Sin filtro, se devuelven todos.
   const slides = await this.prisma.hero_slides.findMany({
     where,
     orderBy: { orden: 'asc' },
@@ -84,12 +98,17 @@ async findAll(params: { search?: string, orden?: string }) {
       title: true,
       orden: true,
       active: true,
+      link: true,
+      category_id: true,
+      sub_category_id: true,
     }
   });
 
   const formatted = slides.map((slide) => ({
     ...slide,
     id: slide.id.toString(),
+    category_id: slide.category_id?.toString() ?? null,
+    sub_category_id: slide.sub_category_id?.toString() ?? null,
     image: this.formatImageUrl(slide.image),
   }));
 
@@ -116,6 +135,8 @@ async findAll(params: { search?: string, orden?: string }) {
     return {
       ...slide,
       id: slide.id.toString(),
+      category_id: (slide as any).category_id?.toString() ?? null,
+      sub_category_id: (slide as any).sub_category_id?.toString() ?? null,
       image: this.formatImageUrl(slide.image),
     };
   }
@@ -156,6 +177,8 @@ async findAll(params: { search?: string, orden?: string }) {
         orden: updateHeroSliderDto.order !== undefined ? Number(updateHeroSliderDto.order) : existing.orden,
         active: updateHeroSliderDto.active !== undefined ? updateHeroSliderDto.active : existing.active,
         name: updateHeroSliderDto.name !== undefined ? updateHeroSliderDto.name : existing.name,
+        category_id: updateHeroSliderDto.category_id !== undefined ? (updateHeroSliderDto.category_id ? BigInt(updateHeroSliderDto.category_id) : null) : (existing as any).category_id,
+        sub_category_id: updateHeroSliderDto.sub_category_id !== undefined ? (updateHeroSliderDto.sub_category_id ? BigInt(updateHeroSliderDto.sub_category_id) : null) : (existing as any).sub_category_id,
         image: imageUrl,
       },
     });
@@ -163,6 +186,8 @@ async findAll(params: { search?: string, orden?: string }) {
     return {
       ...slide,
       id: slide.id.toString(),
+      category_id: (slide as any).category_id?.toString() ?? null,
+      sub_category_id: (slide as any).sub_category_id?.toString() ?? null,
       image: this.formatImageUrl(slide.image),
     };
   }
