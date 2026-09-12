@@ -170,12 +170,24 @@ export class AuthController {
   // Helpers privados
   // ────────────────────────────────────────────
 
+  // Duraciones alineadas con el backend: JWT '8h' (auth.module.ts) y
+  // refreshToken +7 días en BD (auth.service.ts). Sobreescribibles por env.
+  private accessCookieMaxAge(): number {
+    const hours = Number(this.configService.get('ACCESS_TOKEN_TTL_HOURS')) || 8;
+    return hours * 60 * 60 * 1000;
+  }
+
+  private refreshCookieMaxAge(): number {
+    const days = Number(this.configService.get('REFRESH_TOKEN_TTL_DAYS')) || 7;
+    return days * 24 * 60 * 60 * 1000;
+  }
+
   private setAccessCookie(response: Response, accessToken: string) {
     response.cookie('access_token', accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 10 * 1000, // DEBUG asimétrico: 10s para probar refresh
+      maxAge: this.accessCookieMaxAge(),
       path: '/api',
     });
   }
@@ -185,7 +197,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 5 * 60 * 1000, // DEBUG asimétrico: 5min para probar refresh tras expirar access
+      maxAge: this.refreshCookieMaxAge(),
       path: '/api',
     });
   }

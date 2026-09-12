@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { WatermarkService } from 'src/common/watermark/watermark.service';
 import { CreateArticleImageDto } from './dto/create-article_image.dto';
 import { UpdateArticleImageDto } from './dto/update-article_image.to';
 
@@ -11,6 +12,7 @@ export class ArticleImageService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
+    private watermarkService: WatermarkService,
   ) {}
 
   private async notifyProductRevalidation(slug?: string): Promise<void> {
@@ -83,6 +85,8 @@ export class ArticleImageService {
     // Generar URL si hay un archivo
     let imageUrl = createArticleImageDto.url;
     if (file) {
+      // Marca de agua: logo B/N semitransparente, centrado y grande
+      await this.watermarkService.applyToFile(file.path);
       imageUrl = `/storage/articles/${file.filename}`;
     }
 
@@ -186,6 +190,8 @@ async update(
 
   //  file → url
   if (file) {
+    // Marca de agua: logo B/N semitransparente, centrado y grande
+    await this.watermarkService.applyToFile(file.path);
     data.url = `/storage/articles/${file.filename}`;
   }
 

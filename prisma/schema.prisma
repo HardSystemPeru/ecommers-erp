@@ -107,6 +107,7 @@ model articles {
   slug                                                                                String?                      @unique(map: "UNI",length: 200) @db.Text
   brands                                                                              brands?                      @relation(fields: [brand_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "articles_brand_id_foreign")
   categories                                                                          categories?                  @relation(fields: [category_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "articles_category_id_foreign")
+    sub_categories                                                                          sub_categories?                  @relation(fields: [sub_category_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "articles_sub_category_id_foreign")
   companies                                                                           companies?                   @relation(fields: [company_type_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "articles_company_type_id_foreign")
   currency_types                                                                      currency_types?              @relation(fields: [currency_type_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "articles_currency_type_id_foreign")
   measurement_units                                                                   measurement_units?           @relation(fields: [measurement_unit_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "articles_measurement_unit_id_foreign")
@@ -2438,7 +2439,7 @@ model sub_categories {
   image_url   String?    @db.VarChar(255)
   categories  categories @relation(fields: [category_id], references: [id], onDelete: Cascade, map: "sub_categories_category_id_foreign")
   hero_slides hero_slides[]
-
+  articles articles[]
   @@index([category_id], map: "sub_categories_category_id_foreign")
 }
 
