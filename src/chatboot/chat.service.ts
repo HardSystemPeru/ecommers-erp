@@ -1,9 +1,14 @@
 import { Inject, Injectable, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { Prisma } from '@prisma/client';
 import { RedisClientType } from "redis";
 import { PrismaService } from "src/prisma/prisma.service";
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { normalizeToken as normalizeWithDict, getVariants } from './plural-variants';
+
+// Intención de oferta: "oferta(s), descuento(s), promoción, promo, barato(s), remate, liquidación"
+const OFERTA_RE = /\b(ofertas?|descuentos?|promociones?|promos?|baratos?|remates?|liquidaciones?)\b/i;
+const OFERTA_RE_G = /\b(ofertas?|descuentos?|promociones?|promos?|baratos?|remates?|liquidaciones?)\b/gi;
 
 @Injectable()
 export class Chat implements OnModuleInit {
@@ -63,17 +68,58 @@ export class Chat implements OnModuleInit {
   async buscarArticulos(queryOriginal: string) {
 
     const limit = 12;
-    
-      const tokens = queryOriginal.toLowerCase().split(/\s+/).filter(t => t.length > 2).map(t => this.normalizarToken(t));
 
-      const tokensValidos = await this.filtrarTokensValidos(tokens);
-      const tokensTexto = tokensValidos.join(' ');
+    // Antispam: la misma consulta repetida más de 10 veces se bloquea 10 minutos
+    if (await this.verificarBloqueoRepeticion(queryOriginal)) {
+      return {
+        message: 'Has repetido muchas veces la misma consulta. Inténtalo de nuevo en unos minutos.',
+        type: 'product_list',
+        data: [],
+        meta: {
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+          queryId: null,
+        },
+      };
+    }
+    const tipo_de_cambio: any = await this.prisma.exchange_rates.findFirst({ orderBy: { date: 'desc' } });
+    const rate = Number(tipo_de_cambio?.parallel_rate) || 0;
+    const appURL = this.configService.get<string>('APP_URL');
 
     // Atajo: si el mensaje es solo números, buscar por id/cod_fab (nunca están en el vocabulario)
     if (/^\d+$/.test(queryOriginal.trim())) {
       return this.buscarPorId(queryOriginal.trim());
     }
 
+    const pideOferta = OFERTA_RE.test(queryOriginal);
+    // Las palabras de oferta son intención, no términos de búsqueda
+    const texto = queryOriginal.replace(OFERTA_RE_G, ' ');
+    const tokens = texto.toLowerCase().split(/\s+/).filter(t => t.length > 2).map(t => this.normalizarToken(t));
+
+    const tokensValidos = await this.filtrarTokensValidos(tokens);
+    const tokensTexto = tokensValidos.join(' ');
+
+    // Solo pidió ofertas, sin producto: listar todo lo ofertado
+    if (tokensValidos.length === 0 && pideOferta) {
+      const cachePayload = { ofertaPura: true };
+      const { rows, total } = await this.ejecutarBusqueda({
+        booleanQuery: '', tokensTexto: '', queryOriginal: '',
+        pideOferta: true, ofertaPura: true, comboLikes: [],
+        limit, offset: 0, rate,
+      });
+      const hasMore = total > rows.length;
+      const queryId = hasMore ? randomUUID() : null;
+      if (queryId) {
+        await this.redisClient.set(`chat:query:${queryId}`, JSON.stringify(cachePayload), { EX: 60 * 10 });
+      }
+      return {
+        message: rows.length === 0 ? 'Por ahora no tenemos ofertas disponibles' : 'Aqui tienes las ofertas ',
+        type: 'product_list',
+        data: this.mapPrecios(rows, rate, appURL),
+        meta: { total, hasMore, nextCursor: null, queryId },
+      };
+    }
 
     if (tokensValidos.length === 0) {
          return {
@@ -99,81 +145,32 @@ export class Chat implements OnModuleInit {
           return `(${variants.map(v => `${v}*`).join(' ')})`;
         })
         .join(' ');
-    
-       const [ data = [], totalResult ] = await Promise.all([
+      const comboLikes = this.comboLikesDe(texto);
 
-       this.prisma.$queryRaw`
-        SELECT
-         a.id,
-         a.description AS nombre,
-           MATCH(a.description) AGAINST (${queryOriginal} IN NATURAL LANGUAGE MODE) AS relevanciaDesc,
-           MATCH(c.name) AGAINST (${queryOriginal} IN NATURAL LANGUAGE MODE) AS relevanciaCategoria,
-             (c.name = UPPER(${tokensTexto})) AS categoriaExacta,
-         a.public_price AS precio,
-         (
-           SELECT i.url
-           FROM article_images i
-           WHERE i.article_id = a.id
-           LIMIT 1
-         ) AS imagen,
-         b.name AS marca,
-         c.name AS categoria,
-         a.slug AS ruta
-      
-        FROM articles a
-        INNER JOIN brands b ON b.id = a.brand_id 
-        INNER JOIN categories c ON c.id = a.category_id
-         WHERE
-         a.status=1 AND a.venta=1 AND a.habilitado_web=1 AND a.slug IS NOT NULL AND a.id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)
-         AND (
-           MATCH(c.name) AGAINST (${booleanQuery} IN BOOLEAN MODE)
-           OR  MATCH(a.description) AGAINST (${booleanQuery} IN BOOLEAN MODE)
-         )
-           ORDER BY
-            categoriaExacta DESC,
-           relevanciaCategoria DESC,
-   relevanciaDesc DESC,
-           a.id ASC
-        
-        LIMIT ${limit}
-        ` as any,
-
-      this.prisma.$queryRaw<{ total: bigint }[]>`
-        SELECT COUNT(*) AS total
-        FROM articles a
-        WHERE a.status=1 AND a.venta=1 AND a.habilitado_web=1 AND a.slug IS NOT NULL AND a.id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)
-        AND MATCH(a.description) AGAINST (${booleanQuery} IN BOOLEAN MODE)`
-
-        
-      ])
-   
-     const total = Number(totalResult[0]?.total ?? 0);
-     const tipo_de_cambio:any =  await   this.prisma.exchange_rates.findFirst({orderBy: { date: 'desc' }}); 
-     const appURL = this.configService.get<string>('APP_URL');
-     
-    
+      const cachePayload = { booleanQuery, tokensTexto, queryOriginal, pideOferta, comboLikes };
+      const { rows: data, total } = await this.ejecutarBusqueda({
+        booleanQuery, tokensTexto, queryOriginal, pideOferta, ofertaPura: false, comboLikes,
+        limit, offset: 0, rate,
+      });
 
      const hasMore = total > data.length;
 
-    const queryId = hasMore ? randomUUID() : null;  
+    const queryId = hasMore ? randomUUID() : null;
 
      if (queryId) {
-        await this.redisClient.set(`chat:query:${queryId}`,JSON.stringify({booleanQuery}),
+        await this.redisClient.set(`chat:query:${queryId}`, JSON.stringify(cachePayload),
         {
            EX: 60 * 10,
         },
   );
 }
- 
+
      return {
-             message: data?.length === 0 && Array.isArray(data) ?"Lo siento no hay producto disponible"  :"Aqui tienes los resultados " ,
+             message: data?.length === 0
+               ? (pideOferta ? 'No encontramos ofertas para esa búsqueda' : 'Lo siento no hay producto disponible')
+               : 'Aqui tienes los resultados ',
              type: "product_list",
-             data: data.map((item:any) => ({
-                ...item,
-                precio: Number((Number(item?.precio) * (Number(tipo_de_cambio?.parallel_rate) || Number(tipo_de_cambio?.parallel_rate) || 0)).toFixed(2)),
-                imagen: item?.imagen ? appURL + item.imagen : null,
-      
-             })),
+             data: this.mapPrecios(data, rate, appURL),
              meta:{
               total,
               hasMore,
@@ -181,6 +178,153 @@ export class Chat implements OnModuleInit {
                queryId
               }
             }
+  }
+
+  /**
+   * Bloquea 10 minutos la consulta que se repite más de 10 veces.
+   * Ventana deslizante de 10 min por hash del mensaje. Fail-open si Redis falla.
+   */
+  private async verificarBloqueoRepeticion(queryOriginal: string): Promise<boolean> {
+    try {
+      const texto = (queryOriginal || '').toLowerCase().trim();
+      if (!texto) return false;
+      const hash = createHash('sha1').update(texto).digest('hex');
+      const blockKey = `chat:bloqueo:${hash}`;
+      const countKey = `chat:repeticiones:${hash}`;
+      if (await this.redisClient.exists(blockKey)) return true;
+      const veces = await this.redisClient.incr(countKey);
+      if (veces === 1) await this.redisClient.expire(countKey, 600);
+      if (veces > 10) {
+        await this.redisClient.set(blockKey, '1', { EX: 600 });
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Palabras sanitizadas para el LIKE de combos (build_pc_tabla no tiene FULLTEXT). */
+  private comboLikesDe(texto: string): string[] {    const out = new Set<string>();
+    for (const w of texto.toLowerCase().split(/\s+/)) {
+      const limpio = w.replace(/[^a-z0-9áéíóúñü]/gi, '');
+      if (limpio.length >= 2 && out.size < 8) out.add(limpio);
+    }
+    return Array.from(out);
+  }
+
+  /** Mapeo final de precios: artículos se convierten con TC, combos ya vienen en soles. */
+  private mapPrecios(rows: any[], rate: number, appURL: string | undefined) {
+    return (rows || []).map((item: any) => {
+      const esCombo = item?.tipo === 'combo';
+      const base = Number(item?.precio) || 0;
+      const out: any = {
+        ...item,
+        precio: esCombo ? Number(base.toFixed(2)) : Number((base * rate).toFixed(2)),
+        imagen: item?.imagen
+          ? (String(item.imagen).startsWith('http') ? item.imagen : (appURL || '') + item.imagen)
+          : null,
+      };
+      const pct = Number(item?.oferta_pct) || 0;
+      if (!esCombo && item?.oferta && pct > 0) {
+        out.precio_oferta = Number((base * (1 - pct / 100) * rate).toFixed(2));
+      }
+      return out;
+    });
+  }
+
+  /**
+   * Búsqueda unificada artículos (FULLTEXT) + combos build_pc_tabla (LIKE).
+   * Con pideOferta los artículos se filtran por has_offer=1 y los combos se omiten
+   * (no tienen flag de oferta). Con ofertaPura solo se listan ofertas.
+   */
+  private async ejecutarBusqueda(o: {
+    booleanQuery: string;
+    tokensTexto: string;
+    queryOriginal: string;
+    pideOferta: boolean;
+    ofertaPura: boolean;
+    comboLikes: string[];
+    limit: number;
+    offset: number;
+    rate: number;
+  }): Promise<{ rows: any[]; total: number }> {
+    const VIS = Prisma.sql`a.status=1 AND a.venta=1 AND a.habilitado_web=1 AND a.slug IS NOT NULL AND a.id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)`;
+    const ofertaFrag = o.pideOferta ? Prisma.sql`AND a.has_offer = 1` : Prisma.empty;
+
+    if (o.ofertaPura) {
+      const [rows, tot] = await Promise.all([
+        this.prisma.$queryRaw(Prisma.sql`
+          SELECT a.id, a.description AS nombre, 0 AS relevanciaDesc, 0 AS relevanciaCategoria, 0 AS categoriaExacta,
+            a.public_price AS precio, a.offer_price_percent AS oferta_pct, a.has_offer AS oferta,
+            (SELECT i.url FROM article_images i WHERE i.article_id = a.id LIMIT 1) AS imagen,
+            b.name AS marca, c.name AS categoria, a.slug AS ruta, 'article' AS tipo
+          FROM articles a
+          INNER JOIN brands b ON b.id = a.brand_id
+          INNER JOIN categories c ON c.id = a.category_id
+          WHERE ${VIS} AND a.has_offer = 1
+          ORDER BY a.id DESC LIMIT ${o.limit} OFFSET ${o.offset}`) as any as any[],
+        this.prisma.$queryRaw(Prisma.sql`
+          SELECT COUNT(*) AS total FROM articles a WHERE ${VIS} AND a.has_offer = 1`) as any as any[],
+      ]);
+      return { rows, total: Number((tot as any[])[0]?.total ?? 0) };
+    }
+
+    const artSel = Prisma.sql`
+      SELECT a.id, a.description AS nombre,
+        MATCH(a.description) AGAINST (${o.queryOriginal} IN NATURAL LANGUAGE MODE) AS relevanciaDesc,
+        MATCH(c.name) AGAINST (${o.queryOriginal} IN NATURAL LANGUAGE MODE) AS relevanciaCategoria,
+        (c.name = UPPER(${o.tokensTexto})) AS categoriaExacta,
+        a.public_price AS precio, a.offer_price_percent AS oferta_pct, a.has_offer AS oferta,
+        (SELECT i.url FROM article_images i WHERE i.article_id = a.id LIMIT 1) AS imagen,
+        b.name AS marca, c.name AS categoria, a.slug AS ruta, 'article' AS tipo
+      FROM articles a
+      INNER JOIN brands b ON b.id = a.brand_id
+      INNER JOIN categories c ON c.id = a.category_id
+      WHERE ${VIS}
+        AND (MATCH(c.name) AGAINST (${o.booleanQuery} IN BOOLEAN MODE)
+          OR MATCH(a.description) AGAINST (${o.booleanQuery} IN BOOLEAN MODE))
+        ${ofertaFrag}`;
+
+    // build_pc_tabla no tiene FULLTEXT: se busca con LIKE y el precio se suma de sus componentes en soles
+    const conCombos = o.comboLikes.length > 0 && !o.pideOferta;
+    const likeConds = o.comboLikes.map(l =>
+      Prisma.sql`(b.name LIKE ${'%' + l + '%'} OR b.description LIKE ${'%' + l + '%'})`);
+    const comboSel = conCombos ? Prisma.sql`
+      UNION ALL
+      (SELECT b.id, b.name AS nombre, 0 AS relevanciaDesc, 0 AS relevanciaCategoria, 0 AS categoriaExacta,
+        COALESCE((
+          SELECT SUM(d.quantity * CASE WHEN art.currency_type_id = 1 THEN art.public_price ELSE art.public_price * ${o.rate} END)
+          FROM build_detail_pc_tabla d INNER JOIN articles art ON art.id = d.article_id
+          WHERE d.build_pc_id = b.id
+        ), b.total_price) AS precio,
+        NULL AS oferta_pct, 0 AS oferta, b.image_build AS imagen,
+        NULL AS marca, 'Combos' AS categoria, b.slug AS ruta, 'combo' AS tipo
+      FROM build_pc_tabla b
+      WHERE b.status = 1 AND b.slug IS NOT NULL AND (${Prisma.join(likeConds, ' OR ')}))` : Prisma.empty;
+
+    const [rows, artTot, comboTot] = await Promise.all([
+      this.prisma.$queryRaw(Prisma.sql`
+        ${artSel} ${comboSel}
+        ORDER BY tipo DESC, categoriaExacta DESC, relevanciaCategoria DESC, relevanciaDesc DESC, id ASC
+        LIMIT ${o.limit} OFFSET ${o.offset}`) as any as any[],
+      this.prisma.$queryRaw(Prisma.sql`
+        SELECT COUNT(*) AS total FROM articles a
+        INNER JOIN categories c ON c.id = a.category_id
+        WHERE ${VIS}
+          AND (MATCH(c.name) AGAINST (${o.booleanQuery} IN BOOLEAN MODE)
+            OR MATCH(a.description) AGAINST (${o.booleanQuery} IN BOOLEAN MODE))
+          ${ofertaFrag}`) as any as any[],
+      conCombos
+        ? this.prisma.$queryRaw(Prisma.sql`
+          SELECT COUNT(*) AS total FROM build_pc_tabla b
+          WHERE b.status = 1 AND b.slug IS NOT NULL AND (${Prisma.join(likeConds, ' OR ')})`) as any as any[]
+        : Promise.resolve([{ total: 0 }]),
+    ]);
+    return {
+      rows,
+      total: Number((artTot as any[])[0]?.total ?? 0) + Number((comboTot as any[])[0]?.total ?? 0),
+    };
   }
 
   /**
@@ -283,8 +427,63 @@ export class Chat implements OnModuleInit {
     };
   }
 
-  const { booleanQuery } = JSON.parse(cache);
+  const parsed = JSON.parse(cache);
 
+  const limit = 12;
+  const offset = (pagina - 1) * limit;
+
+  // Formato legacy (solo booleanQuery, sin comboLikes): paginado solo-artículos como antes
+  if (parsed.comboLikes === undefined && !parsed.ofertaPura) {
+    return this.verMasLegacy(consultaId, parsed.booleanQuery, pagina);
+  }
+
+  const tipo_de_cambio: any =
+    await this.prisma.exchange_rates.findFirst({
+      orderBy: {
+        date: 'desc',
+      },
+    });
+  const rate = Number(tipo_de_cambio?.parallel_rate) || 0;
+  const appURL = this.configService.get<string>('APP_URL');
+
+  const { rows: data, total } = await this.ejecutarBusqueda({
+    booleanQuery: parsed.booleanQuery || '',
+    tokensTexto: parsed.tokensTexto || '',
+    queryOriginal: parsed.queryOriginal || '',
+    pideOferta: !!parsed.pideOferta,
+    ofertaPura: !!parsed.ofertaPura,
+    comboLikes: parsed.comboLikes || [],
+    limit,
+    offset,
+    rate,
+  });
+
+  const hasMore = offset + data.length < total;
+
+  const totalPaginas = Math.ceil(total / limit);
+
+  return {
+    message:
+      data.length === 0
+        ? 'No hay más productos'
+        : 'Aquí tienes más resultados',
+
+    type: 'product_list',
+
+    data: this.mapPrecios(data, rate, appURL),
+
+    meta: {
+      total,
+      hasMore,
+      queryId: hasMore ? consultaId : null,
+      pagina,
+      totalPaginas,
+    },
+  };
+  }
+
+  /** Paginado legacy para queryIds guardados antes del formato unión+ofertas (TTL 10 min). */
+  private async verMasLegacy(consultaId: string, booleanQuery: string, pagina: number) {
   const limit = 12;
   const offset = (pagina - 1) * limit;
 
