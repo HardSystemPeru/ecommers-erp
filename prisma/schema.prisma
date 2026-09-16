@@ -103,6 +103,7 @@ model articles {
   updated_at                                                                          DateTime?                    @db.Timestamp(0)
   is_new_for_web                                                                      Boolean?                     @default(false)
   offer_price_percent                                                                 Decimal?                     @default(0.00) @db.Decimal(8, 2)
+  precio_final                                                                          Decimal?                     @db.Decimal(10, 2)
   has_offer                                                                           Boolean?                     @default(false)
   slug                                                                                String?                      @unique(map: "UNI",length: 200) @db.Text
   brands                                                                              brands?                      @relation(fields: [brand_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "articles_brand_id_foreign")

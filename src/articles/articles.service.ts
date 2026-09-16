@@ -400,6 +400,13 @@ is_new_for_web: article.is_new_for_web ? 1 : 0,
 has_offer: article.has_offer ? 1 : 0,
 
       offer_price_percent: article.offer_price_percent ? Number(article.offer_price_percent) : 0,
+      precio_final: article.precio_final != null ? Number(article.precio_final) : null,
+      precio_final_soles: article.precio_final != null
+        ? Number((article.currency_type_id?.toString() === '1' ? Number(article.precio_final) : Number(article.precio_final) * Number(dollarRate)).toFixed(2))
+        : null,
+      precio_final_dolares: article.precio_final != null
+        ? Number((article.currency_type_id?.toString() === '2' ? Number(article.precio_final) : Number(dollarRate) > 0 ? Number(article.precio_final) / Number(dollarRate) : 0).toFixed(2))
+        : null,
       categories: article.categories ? { ...article.categories, id: article.categories.id.toString(),} : null,
       brands: article.brands ? { ...article.brands, id: article.brands.id.toString(),} : null,
       public_price: article.public_price ? parseFloat(article.public_price.toString()) : null,
@@ -557,6 +564,13 @@ has_offer: article.has_offer ? 1 : 0,
           is_new_for_web: matched.is_new_for_web ? 1 : 0,
           has_offer: matched.has_offer ? 1 : 0,
           offer_price_percent: matched.offer_price_percent ? Number(matched.offer_price_percent) : 0,
+          precio_final: matched.precio_final != null ? Number(matched.precio_final) : null,
+          precio_final_soles: matched.precio_final != null
+            ? Number((matched.currency_type_id?.toString() === '1' ? Number(matched.precio_final) : Number(matched.precio_final) * Number(dollarRateArt)).toFixed(2))
+            : null,
+          precio_final_dolares: matched.precio_final != null
+            ? Number((matched.currency_type_id?.toString() === '2' ? Number(matched.precio_final) : Number(dollarRateArt) > 0 ? Number(matched.precio_final) / Number(dollarRateArt) : 0).toFixed(2))
+            : null,
           categories: matched.categories ? { ...matched.categories, id: matched.categories.id.toString() } : null,
           brands: matched.brands ? { ...matched.brands, id: matched.brands.id.toString() } : null,
           sub_categories: subCategoryArt ? { ...subCategoryArt, id: subCategoryArt.id.toString() } : null,
@@ -749,6 +763,13 @@ is_new_for_web: article.is_new_for_web ? 1 : 0,
 has_offer: article.has_offer ? 1 : 0,
 
         offer_price_percent: article.offer_price_percent ? Number(article.offer_price_percent) : 0,
+        precio_final: article.precio_final != null ? Number(article.precio_final) : null,
+        precio_final_soles: article.precio_final != null
+          ? Number((article.currency_type_id?.toString() === '1' ? Number(article.precio_final) : Number(article.precio_final) * Number(dollarRate)).toFixed(2))
+          : null,
+        precio_final_dolares: article.precio_final != null
+          ? Number((article.currency_type_id?.toString() === '2' ? Number(article.precio_final) : Number(dollarRate) > 0 ? Number(article.precio_final) / Number(dollarRate) : 0).toFixed(2))
+          : null,
         categories: article.categories ? { ...article.categories, id: article.categories.id.toString() } : null,
         brands: article.brands ? { ...article.brands, id: article.brands.id.toString() } : null,
         sub_categories: subCategory ? { ...subCategory, id: subCategory.id.toString() } : null,

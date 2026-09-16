@@ -121,5 +121,17 @@ export class ArticleResponseDto {
   offer_price_percent: number;
 
   @Expose()
+  @Transform(({ value }) => (value !== undefined && value !== null ? Number(value) : null))
+  precio_final: number;
+
+  @Expose()
+  @Transform(({ value }) => (value !== undefined && value !== null ? Number(value) : null))
+  precio_final_soles: number;
+
+  @Expose()
+  @Transform(({ value }) => (value !== undefined && value !== null ? Number(value) : null))
+  precio_final_dolares: number;
+
+  @Expose()
   items: any[];
 }
