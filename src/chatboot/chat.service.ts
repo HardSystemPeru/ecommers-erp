@@ -9,6 +9,8 @@ import { normalizeToken as normalizeWithDict, getVariants } from './plural-varia
 // Intención de oferta: "oferta(s), descuento(s), promoción, promo, barato(s), remate, liquidación"
 const OFERTA_RE = /\b(ofertas?|descuentos?|promociones?|promos?|baratos?|remates?|liquidaciones?)\b/i;
 const OFERTA_RE_G = /\b(ofertas?|descuentos?|promociones?|promos?|baratos?|remates?|liquidaciones?)\b/gi;
+// Tope de ofertas por página (el resto del chat usa 12)
+const OFFER_LIMIT = 10;
 
 @Injectable()
 export class Chat implements OnModuleInit {
@@ -100,13 +102,13 @@ export class Chat implements OnModuleInit {
     const tokensValidos = await this.filtrarTokensValidos(tokens);
     const tokensTexto = tokensValidos.join(' ');
 
-    // Solo pidió ofertas, sin producto: listar todo lo ofertado
+    // Solo pidió ofertas, sin producto: listar las 10 primeras ofertas
     if (tokensValidos.length === 0 && pideOferta) {
       const cachePayload = { ofertaPura: true };
       const { rows, total } = await this.ejecutarBusqueda({
         booleanQuery: '', tokensTexto: '', queryOriginal: '',
         pideOferta: true, ofertaPura: true, comboLikes: [],
-        limit, offset: 0, rate,
+        limit: OFFER_LIMIT, offset: 0, rate,
       });
       const hasMore = total > rows.length;
       const queryId = hasMore ? randomUUID() : null;
@@ -429,7 +431,8 @@ export class Chat implements OnModuleInit {
 
   const parsed = JSON.parse(cache);
 
-  const limit = 12;
+  // Modo ofertas pagina de 10 en 10, el resto de 12 en 12
+  const limit = parsed.ofertaPura ? OFFER_LIMIT : 12;
   const offset = (pagina - 1) * limit;
 
   // Formato legacy (solo booleanQuery, sin comboLikes): paginado solo-artículos como antes
