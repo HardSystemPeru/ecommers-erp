@@ -19,6 +19,7 @@ import { ConsultaModule } from './consulta/consulta.module';
 import { ComplaintsModule } from './libro-reclamos/libro-reclamos.module';
 import { TermsModule } from './terms/terms.module';
 import { WatermarkModule } from './common/watermark/watermark.module';
+import { PriceFeedModule } from './price-feed/price-feed.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
@@ -52,6 +53,7 @@ import { CsrfGuard } from './auth/csrf/csrf.guard';
     ComplaintsModule,
     TermsModule,
     WatermarkModule,
+    PriceFeedModule,
   ],
   controllers: [],
   providers: [
