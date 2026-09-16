@@ -64,10 +64,15 @@ export class Chat implements OnModuleInit {
 
     const limit = 12;
     
-     const tokens = queryOriginal.toLowerCase().split(/\s+/).filter(t => t.length > 2).map(t => this.normalizarToken(t));
+      const tokens = queryOriginal.toLowerCase().split(/\s+/).filter(t => t.length > 2).map(t => this.normalizarToken(t));
 
       const tokensValidos = await this.filtrarTokensValidos(tokens);
       const tokensTexto = tokensValidos.join(' ');
+
+    // Atajo: si el mensaje es solo números, buscar por id/cod_fab (nunca están en el vocabulario)
+    if (/^\d+$/.test(queryOriginal.trim())) {
+      return this.buscarPorId(queryOriginal.trim());
+    }
 
 
     if (tokensValidos.length === 0) {
@@ -84,14 +89,14 @@ export class Chat implements OnModuleInit {
    };
  }
 
-      // Expandir cada token válido a todas sus variantes singular/plural/sinónimos
-      // para que "rams" encuentre "ram/memorias" y "procesadores" encuentre "procesador/cpu"
+      // Grupos OR opcionales: cada concepto suma si coincide, pero ninguno excluye.
+      // Así un título largo pegado devuelve los más parecidos (ordenados por relevancia)
+      // en vez de vacío por exigir todos los términos a la vez.
       const booleanQuery = tokensValidos
         .map(valid => {
           const variants = Array.from(new Set(getVariants(valid).map(v => v.toLowerCase().trim()).filter(v => v.length > 2))).slice(0, 6);
-          if (variants.length === 1) return `+${variants[0]}*`;
-          // Grupo OR obligatorio: debe contener al menos una variante del concepto
-          return `+(${variants.map(v => `${v}*`).join(' ')})`;
+          if (variants.length === 1) return `${variants[0]}*`;
+          return `(${variants.map(v => `${v}*`).join(' ')})`;
         })
         .join(' ');
     
@@ -176,6 +181,86 @@ export class Chat implements OnModuleInit {
                queryId
               }
             }
+  }
+
+  /**
+   * Búsqueda directa por id exacto y luego por cod_fab.
+   * No usa FULLTEXT ni vocabulario: los códigos nunca están ahí.
+   */
+  async buscarPorId(idStr: string) {
+    const limit = 12;
+    const idNum = Number(idStr);
+    const like = `%${idStr}%`;
+    const appURL = this.configService.get<string>('APP_URL');
+    const tipo_de_cambio: any = await this.prisma.exchange_rates.findFirst({ orderBy: { date: 'desc' } });
+    const rate = Number(tipo_de_cambio?.parallel_rate) || 0;
+
+    const mapRows = (rows: any[]) => rows.map((item: any) => ({
+      ...item,
+      precio: Number((Number(item?.precio) * rate).toFixed(2)),
+      imagen: item?.imagen ? appURL + item.imagen : null,
+    }));
+
+    // 1) id exacto
+    let data = await this.prisma.$queryRaw`
+      SELECT
+        a.id,
+        a.description AS nombre,
+        a.public_price AS precio,
+        (
+          SELECT i.url
+          FROM article_images i
+          WHERE i.article_id = a.id
+          LIMIT 1
+        ) AS imagen,
+        b.name AS marca,
+        c.name AS categoria,
+        a.slug AS ruta
+      FROM articles a
+      INNER JOIN brands b ON b.id = a.brand_id
+      INNER JOIN categories c ON c.id = a.category_id
+      WHERE a.status=1 AND a.venta=1 AND a.habilitado_web=1 AND a.slug IS NOT NULL AND a.id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)
+        AND a.id = ${idNum}
+      LIMIT ${limit}
+    ` as any[];
+
+    // 2) si no hubo id exacto, probar cod_fab
+    if (!data || data.length === 0) {
+      data = await this.prisma.$queryRaw`
+        SELECT
+          a.id,
+          a.description AS nombre,
+          a.public_price AS precio,
+          (
+            SELECT i.url
+            FROM article_images i
+            WHERE i.article_id = a.id
+            LIMIT 1
+          ) AS imagen,
+          b.name AS marca,
+          c.name AS categoria,
+          a.slug AS ruta
+        FROM articles a
+        INNER JOIN brands b ON b.id = a.brand_id
+        INNER JOIN categories c ON c.id = a.category_id
+        WHERE a.status=1 AND a.venta=1 AND a.habilitado_web=1 AND a.slug IS NOT NULL AND a.id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)
+          AND a.cod_fab LIKE ${like}
+        ORDER BY (a.cod_fab = ${idStr}) DESC, a.id ASC
+        LIMIT ${limit}
+      ` as any[];
+    }
+
+    return {
+      message: data.length === 0 ? 'Lo siento no hay producto con ese código' : 'Aqui tienes los resultados ',
+      type: 'product_list',
+      data: mapRows(data || []),
+      meta: {
+        total: (data || []).length,
+        hasMore: false,
+        nextCursor: null,
+        queryId: null,
+      },
+    };
   }
 
   async verMas(consultaId: string, pagina: number) {
@@ -300,24 +385,4 @@ export class Chat implements OnModuleInit {
   };
   }
 }
-
-
-
-    //  ORDER BY relevancia DESC
-//    MATCH(description) AGAINST (${booleanQuery} IN BOOLEAN MODE) AS relevancia
-
-// {
-//   "data": [
-//     { "id": 8865 },
-//     { "id": 8866 },
-//     { "id": 8867 },
-//     { "id": 8868 },
-//     { "id": 8869 }
-//   ],
-//   "meta": {
-//     "total": 58,
-//     "hasMore": true,
-//     "nextCursor": "8869",
-//     "queryId": "f4c26370-0eed-4993-b0ad-e3cf2358e94f"
-//   }
-// }
+ 
