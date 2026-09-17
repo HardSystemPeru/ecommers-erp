@@ -1,4 +1,5 @@
 import slugify from 'slugify';
+import { calcComboTotals, priceComboLine } from '../utils/combo-price.util';
 
 export class ArticleMapper {
   static formatImageUrl(url: string | null, baseUrl: string): string | null {
@@ -145,14 +146,13 @@ export class ArticleMapper {
   }
 
   static toComboResponse(combo: any, dollarRate: number, baseUrl: string) {
-    let calcTotalDolares = 0;
-    let calcTotalSoles = 0;
-    const items = (combo.build_detail_pc_tabla || []).map((detail: any) => {
+    const details = combo.build_detail_pc_tabla || [];
+    const items = details.map((detail: any) => {
       const detailArticle = detail.articles;
       const publicPrice = detailArticle.public_price
         ? parseFloat(detailArticle.public_price.toString())
         : null;
-      
+
       const currencyTypeStr = detailArticle.currency_type_id?.toString();
 
       const public_price_soles = publicPrice
@@ -175,12 +175,9 @@ export class ArticleMapper {
           )
         : null;
 
-      if (publicPrice !== null) {
-        const pSoles = parseFloat((currencyTypeStr === '1' ? publicPrice : publicPrice * dollarRate).toFixed(2));
-        const pDolares = parseFloat((currencyTypeStr === '2' ? publicPrice : dollarRate > 0 ? publicPrice / dollarRate : 0).toFixed(2));
-        calcTotalSoles += pSoles * detail.quantity;
-        calcTotalDolares += pDolares * detail.quantity;
-      }
+      // Precio efectivo (precio_final > oferta > public_price) para que el
+      // total cuadre con lo que el cliente ve en cada artículo.
+      const line = priceComboLine(detailArticle, dollarRate);
 
       return {
         quantity: detail.quantity,
@@ -191,6 +188,12 @@ export class ArticleMapper {
         public_price: publicPrice,
         public_price_soles,
         public_price_dolares,
+        precio_final: detailArticle.precio_final != null ? Number(detailArticle.precio_final) : null,
+        has_offer: detailArticle.has_offer ? 1 : 0,
+        offer_price_percent: Number(detailArticle.offer_price_percent || 0),
+        effective_price: line.effective_price,
+        effective_price_soles: line.effective_price_soles,
+        effective_price_dolares: line.effective_price_dolares,
         category: detailArticle.categories
           ? {
               id: detailArticle.categories.id.toString(),
@@ -211,10 +214,12 @@ export class ArticleMapper {
         })),
       };
     });
-    const calcTotalPrice = parseFloat(calcTotalDolares.toFixed(2));
-    const calcTotalPriceSoles = parseFloat(calcTotalSoles.toFixed(2));
-    const finalTotalPrice = calcTotalPrice > 0 ? calcTotalPrice : combo.total_price;
-    const finalTotalPriceSoles = calcTotalSoles > 0 ? calcTotalPriceSoles : dollarRate > 0 ? parseFloat((combo.total_price * dollarRate).toFixed(2)) : null;
+    // Total = suma de precios efectivos, redondeo único al final.
+    // Sin fallback a combo.total_price (valor fósil): si no se puede
+    // calcular, se devuelve null en vez de un número falso.
+    const totals = calcComboTotals(details, dollarRate, combo.total_price);
+    const finalTotalPrice = totals.total_price;
+    const finalTotalPriceSoles = totals.total_price_soles;
     return {
       id: combo.id.toString(),
       type: 'combo',

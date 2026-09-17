@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client'; 
+import { Prisma } from '@prisma/client';
+import { calcComboTotals, priceComboLine } from './utils/combo-price.util';
 
 @Injectable()
 export class ArticlesService {
@@ -434,17 +435,12 @@ has_offer: article.has_offer ? 1 : 0,
     comboStockRows.forEach((r: any) => comboStockMap.set(String(r.article_id), Number(r.saldo)));
     // Precios de combos vienen de la suma de sus artículos (como artículos normales), no de combo.total_price (estaba en 0)
     const formattedCombos = finalCombos.map((combo) => {
-      // Calcular totales dinámicos desde artículos para precio correcto
-      let calcTotalDolares = 0;
-      let calcTotalSoles = 0;
+      // Total desde precios efectivos (precio_final > oferta > public_price),
+      // redondeo único al final para que cuadre con la suma de los items.
       const comboItems = combo.build_detail_pc_tabla.map((detail) => {
         const art = detail.articles;
-        const pubPrice = art.public_price ? parseFloat(art.public_price.toString()) : 0;
+        const line = priceComboLine(art, dollarRate);
         const currencyStr = art.currency_type_id?.toString();
-        const priceSoles = parseFloat((currencyStr === '1' ? pubPrice : pubPrice * dollarRate).toFixed(2));
-        const priceDolares = parseFloat((currencyStr === '2' ? pubPrice : dollarRate > 0 ? pubPrice / dollarRate : 0).toFixed(2));
-        calcTotalSoles += priceSoles * detail.quantity;
-        calcTotalDolares += priceDolares * detail.quantity;
         return {
           quantity: detail.quantity,
           article_id: art.id.toString(),
@@ -461,6 +457,12 @@ has_offer: article.has_offer ? 1 : 0,
                     ? parseFloat(art.public_price.toString())
                     : dollarRate > 0 ? parseFloat(art.public_price.toString()) / dollarRate : 0
                 ).toFixed(2),): null,
+          precio_final: art.precio_final != null ? Number(art.precio_final) : null,
+          has_offer: art.has_offer ? 1 : 0,
+          offer_price_percent: art.offer_price_percent ? Number(art.offer_price_percent) : 0,
+          effective_price: line.effective_price,
+          effective_price_soles: line.effective_price_soles,
+          effective_price_dolares: line.effective_price_dolares,
           saldo: comboStockMap.get(String(art.id)) ?? 0,
           category: art.categories? {
                 id: art.categories.id.toString(),
@@ -479,11 +481,9 @@ has_offer: article.has_offer ? 1 : 0,
           })),
         };
       });
-      const calcTotalPrice = parseFloat(calcTotalDolares.toFixed(2));
-      const calcTotalPriceSoles = parseFloat(calcTotalSoles.toFixed(2));
-      // Fallback a total_price guardado si la suma es 0 (evita romper combos vacíos)
-      const finalTotalPrice = calcTotalPrice > 0 ? calcTotalPrice : combo.total_price;
-      const finalTotalPriceSoles = calcTotalSoles > 0 ? calcTotalPriceSoles : (dollarRate > 0 ? parseFloat((combo.total_price * dollarRate).toFixed(2)) : null);
+      const totals = calcComboTotals(combo.build_detail_pc_tabla, dollarRate, combo.total_price);
+      const finalTotalPrice = totals.total_price;
+      const finalTotalPriceSoles = totals.total_price_soles;
       return {
         id: combo.id.toString(),
         type: 'combo',
@@ -609,20 +609,9 @@ has_offer: article.has_offer ? 1 : 0,
       const stockRows: any[] = articleIds.length ? await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})` : [];
       const stockMap = new Map<string, number>();
       stockRows.forEach((r: any) => stockMap.set(String(r.article_id), Number(r.saldo)));
-      let calcTotalDolares = 0;
-      let calcTotalSoles = 0;
-      comboBySlug.build_detail_pc_tabla.forEach((detail) => {
-        const pubPrice = detail.articles.public_price ? parseFloat(detail.articles.public_price.toString()) : 0;
-        const currencyStr = detail.articles.currency_type_id?.toString();
-        const priceSoles = parseFloat((currencyStr === '1' ? pubPrice : pubPrice * dollarRate).toFixed(2));
-        const priceDolares = parseFloat((currencyStr === '2' ? pubPrice : dollarRate > 0 ? pubPrice / dollarRate : 0).toFixed(2));
-        calcTotalSoles += priceSoles * detail.quantity;
-        calcTotalDolares += priceDolares * detail.quantity;
-      });
-      const calcTotalPrice = parseFloat(calcTotalDolares.toFixed(2));
-      const calcTotalPriceSoles = parseFloat(calcTotalSoles.toFixed(2));
-      const finalTotalPrice = calcTotalPrice > 0 ? calcTotalPrice : comboBySlug.total_price;
-      const finalTotalPriceSoles = calcTotalSoles > 0 ? calcTotalPriceSoles : (dollarRate > 0 ? parseFloat((comboBySlug.total_price * dollarRate).toFixed(2)) : null);
+      const totalsBySlug = calcComboTotals(comboBySlug.build_detail_pc_tabla, dollarRate, comboBySlug.total_price);
+      const finalTotalPrice = totalsBySlug.total_price;
+      const finalTotalPriceSoles = totalsBySlug.total_price_soles;
       return {
         id: comboBySlug.id.toString(),
         type: 'combo' as const,
@@ -634,7 +623,9 @@ has_offer: article.has_offer ? 1 : 0,
         image_build: this.formatBuildImageUrl(comboBySlug.image_build),
         created_at: comboBySlug.created_at,
         updated_at: comboBySlug.updated_at,
-        items: comboBySlug.build_detail_pc_tabla.map((detail) => ({
+        items: comboBySlug.build_detail_pc_tabla.map((detail) => {
+          const lineBySlug = priceComboLine(detail.articles, dollarRate);
+          return {
           quantity: detail.quantity,
           article_id: detail.articles.id.toString(),
           cod_fab: detail.articles.cod_fab,
@@ -644,11 +635,18 @@ has_offer: article.has_offer ? 1 : 0,
           public_price: detail.articles.public_price ? parseFloat(detail.articles.public_price.toString()) : null,
           public_price_soles: detail.articles.public_price ? parseFloat((detail.articles.currency_type_id?.toString() === '1' ? parseFloat(detail.articles.public_price.toString()) : parseFloat(detail.articles.public_price.toString()) * dollarRate).toFixed(2)) : null,
           public_price_dolares: detail.articles.public_price ? parseFloat((detail.articles.currency_type_id?.toString() === '2' ? parseFloat(detail.articles.public_price.toString()) : dollarRate > 0 ? parseFloat(detail.articles.public_price.toString()) / dollarRate : 0).toFixed(2)) : null,
+          precio_final: detail.articles.precio_final != null ? Number(detail.articles.precio_final) : null,
+          has_offer: detail.articles.has_offer ? 1 : 0,
+          offer_price_percent: detail.articles.offer_price_percent ? Number(detail.articles.offer_price_percent) : 0,
+          effective_price: lineBySlug.effective_price,
+          effective_price_soles: lineBySlug.effective_price_soles,
+          effective_price_dolares: lineBySlug.effective_price_dolares,
           saldo: stockMap.get(String(detail.articles.id)) ?? 0,
           category: detail.articles.categories ? { id: detail.articles.categories.id.toString(), name: detail.articles.categories.name } : null,
           brand: detail.articles.brands ? { id: detail.articles.brands.id.toString(), name: detail.articles.brands.name } : null,
           article_images: detail.articles.article_images.map((img: any) => ({ id: img.id.toString(), url: this.formatImageUrl(img.url), position: img.position, is_main: img.is_main })),
-        })),
+          };
+        }),
       };
     }
 
@@ -817,21 +815,11 @@ has_offer: article.has_offer ? 1 : 0,
       const stockRowsCombo: any[] = articleIdsCombo.length ? await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIdsCombo)})` : [];
       const stockMapCombo = new Map<string, number>();
       stockRowsCombo.forEach((r: any) => stockMapCombo.set(String(r.article_id), Number(r.saldo)));
-      // Calcular precios desde artículos (como listado normal) — corrige total_price 0
-      let calcTotalDolares = 0;
-      let calcTotalSoles = 0;
-      combo.build_detail_pc_tabla.forEach((detail) => {
-        const pubPrice = detail.articles.public_price ? parseFloat(detail.articles.public_price.toString()) : 0;
-        const currencyStr = detail.articles.currency_type_id?.toString();
-        const priceSoles = parseFloat((currencyStr === '1' ? pubPrice : pubPrice * dollarRate).toFixed(2));
-        const priceDolares = parseFloat((currencyStr === '2' ? pubPrice : dollarRate > 0 ? pubPrice / dollarRate : 0).toFixed(2));
-        calcTotalSoles += priceSoles * detail.quantity;
-        calcTotalDolares += priceDolares * detail.quantity;
-      });
-      const calcTotalPrice = parseFloat(calcTotalDolares.toFixed(2));
-      const calcTotalPriceSoles = parseFloat(calcTotalSoles.toFixed(2));
-      const finalTotalPrice = calcTotalPrice > 0 ? calcTotalPrice : combo.total_price;
-      const finalTotalPriceSoles = calcTotalSoles > 0 ? calcTotalPriceSoles : (dollarRate > 0 ? parseFloat((combo.total_price * dollarRate).toFixed(2)) : null);
+      // Total desde precios efectivos (precio_final > oferta > public_price),
+      // redondeo único al final para que cuadre con la suma de los items.
+      const totalsById = calcComboTotals(combo.build_detail_pc_tabla, dollarRate, combo.total_price);
+      const finalTotalPrice = totalsById.total_price;
+      const finalTotalPriceSoles = totalsById.total_price_soles;
       return {
         id: combo.id.toString(),
         type: 'combo' as const,
@@ -843,7 +831,9 @@ has_offer: article.has_offer ? 1 : 0,
         image_build: this.formatBuildImageUrl(combo.image_build),
         created_at: combo.created_at,
         updated_at: combo.updated_at,
-        items: combo.build_detail_pc_tabla.map((detail) => ({
+        items: combo.build_detail_pc_tabla.map((detail) => {
+          const lineById = priceComboLine(detail.articles, dollarRate);
+          return {
           quantity: detail.quantity,
           article_id: detail.articles.id.toString(),
           cod_fab: detail.articles.cod_fab,
@@ -871,6 +861,12 @@ has_offer: article.has_offer ? 1 : 0,
                 ).toFixed(2),
               )
             : null,
+          precio_final: detail.articles.precio_final != null ? Number(detail.articles.precio_final) : null,
+          has_offer: detail.articles.has_offer ? 1 : 0,
+          offer_price_percent: detail.articles.offer_price_percent ? Number(detail.articles.offer_price_percent) : 0,
+          effective_price: lineById.effective_price,
+          effective_price_soles: lineById.effective_price_soles,
+          effective_price_dolares: lineById.effective_price_dolares,
           saldo: stockMapCombo.get(String(detail.articles.id)) ?? 0,
           category: detail.articles.categories
             ? {
@@ -890,7 +886,8 @@ has_offer: article.has_offer ? 1 : 0,
             position: img.position,
             is_main: img.is_main,
           })),
-        })),
+          };
+        }),
       };
     }
     return null;
@@ -1024,7 +1021,11 @@ has_offer: article.has_offer ? 1 : 0,
     return this.formatImageUrl(url);
   }
   
- async stocksArticles(id: number) {
+  async stocksArticles(id: number) {
+    const numericId = Number(id);
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      throw new BadRequestException('article_id es requerido y debe ser un número válido');
+    }
     // Si es combo, devolver saldo mínimo de sus componentes (cuánto combos se pueden armar)
     const combo = await this.prisma.build_pc_tabla.findUnique({
       where: { id: BigInt(id) },
