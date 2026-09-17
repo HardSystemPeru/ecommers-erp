@@ -12,6 +12,21 @@ const OFERTA_RE_G = /\b(ofertas?|descuentos?|promociones?|promos?|baratos?|remat
 // Tope de ofertas por página (el resto del chat usa 12)
 const OFFER_LIMIT = 10;
 
+// Palabras que deben traer combos (build_pc_tabla) aunque no existan en el
+// vocabulario de articles ni tengan MATCH FULLTEXT. Los combos se llaman
+// "PC Gamer...", "Combo..." y nunca contienen la palabra "computadora",
+// por eso el LIKE '%computadora%' devolvía 0 filas.
+const COMPUTER_COMBO_TOKENS = new Set([
+  'computadora',
+  'computadoras',
+  'computador',
+  'computadores',
+  'pc',
+  'pcs',
+  'desktop',
+  'desktops',
+]);
+
 @Injectable()
 export class Chat implements OnModuleInit {
   
@@ -123,7 +138,14 @@ export class Chat implements OnModuleInit {
       };
     }
 
-    if (tokensValidos.length === 0) {
+    // Si no hay tokens válidos de artículos, igual intentar con combos
+    // (ej: "computadora" / "computadoras" / "traeme computadoras" no están
+    // en descriptions pero sí deben devolver los combos/PCs armadas).
+    const comboLikesEarly = this.comboLikesDe(texto);
+    const esBusquedaComputadora =
+      comboLikesEarly.some((w) => COMPUTER_COMBO_TOKENS.has(w)) ||
+      tokens.some((t) => COMPUTER_COMBO_TOKENS.has(t));
+    if (tokensValidos.length === 0 && !esBusquedaComputadora && comboLikesEarly.length === 0) {
          return {
          message: 'Lo siento, no puedo resolver esa duda',
          type: 'product_list',
@@ -135,6 +157,28 @@ export class Chat implements OnModuleInit {
                queryId: null,
      },
    };
+  }
+
+    if (tokensValidos.length === 0) {
+      // Solo-combos: sin MATCH de artículos, solo LIKE (o todos si es "computadora").
+      const booleanQueryEmpty = '';
+      const comboLikes = comboLikesEarly;
+      const cachePayload = { booleanQuery: booleanQueryEmpty, tokensTexto: '', queryOriginal, pideOferta, comboLikes };
+      const { rows: dataOnlyCombos, total: totalOnlyCombos } = await this.ejecutarBusqueda({
+        booleanQuery: booleanQueryEmpty, tokensTexto: '', queryOriginal, pideOferta, ofertaPura: false, comboLikes,
+        limit, offset: 0, rate,
+      });
+      const hasMoreCombos = totalOnlyCombos > dataOnlyCombos.length;
+      const queryIdCombos = hasMoreCombos ? randomUUID() : null;
+      if (queryIdCombos) {
+        await this.redisClient.set(`chat:query:${queryIdCombos}`, JSON.stringify(cachePayload), { EX: 60 * 10 });
+      }
+      return {
+        message: dataOnlyCombos?.length === 0 ? 'Lo siento no hay producto disponible' : 'Aqui tienes los resultados ',
+        type: 'product_list',
+        data: this.mapPrecios(dataOnlyCombos, rate, appURL),
+        meta: { total: totalOnlyCombos, hasMore: hasMoreCombos, nextCursor: null, queryId: queryIdCombos },
+      };
  }
 
       // Grupos OR opcionales: cada concepto suma si coincide, pero ninguno excluye.
@@ -207,10 +251,13 @@ export class Chat implements OnModuleInit {
   }
 
   /** Palabras sanitizadas para el LIKE de combos (build_pc_tabla no tiene FULLTEXT). */
-  private comboLikesDe(texto: string): string[] {    const out = new Set<string>();
+  private comboLikesDe(texto: string): string[] {
+    // Verbos de pedido que nunca están en nombres de combos y solo meterían ruido en el LIKE.
+    const filler = new Set(['traeme', 'traemé', 'tráeme', 'dame', 'muestrame', 'muéstrame', 'quiero', 'necesito', 'busco', 'tienes', 'tienen', 'hay', 'venden', 'para', 'con', 'que', 'una', 'unos', 'unas', 'los', 'las', 'del', 'por', 'favor']);
+    const out = new Set<string>();
     for (const w of texto.toLowerCase().split(/\s+/)) {
       const limpio = w.replace(/[^a-z0-9áéíóúñü]/gi, '');
-      if (limpio.length >= 2 && out.size < 8) out.add(limpio);
+      if (limpio.length >= 2 && !filler.has(limpio) && out.size < 8) out.add(limpio);
     }
     return Array.from(out);
   }
@@ -220,8 +267,9 @@ export class Chat implements OnModuleInit {
     return (rows || []).map((item: any) => {
       const esCombo = item?.tipo === 'combo';
       const base = Number(item?.precio) || 0;
+      const { prioridadCombo, ...rest } = item || {};
       const out: any = {
-        ...item,
+        ...rest,
         precio: esCombo ? Number(base.toFixed(2)) : Number((base * rate).toFixed(2)),
         imagen: item?.imagen
           ? (String(item.imagen).startsWith('http') ? item.imagen : (appURL || '') + item.imagen)
@@ -277,6 +325,7 @@ export class Chat implements OnModuleInit {
         MATCH(a.description) AGAINST (${o.queryOriginal} IN NATURAL LANGUAGE MODE) AS relevanciaDesc,
         MATCH(c.name) AGAINST (${o.queryOriginal} IN NATURAL LANGUAGE MODE) AS relevanciaCategoria,
         (c.name = UPPER(${o.tokensTexto})) AS categoriaExacta,
+        0 AS prioridadCombo,
         a.public_price AS precio, a.offer_price_percent AS oferta_pct, a.has_offer AS oferta,
         (SELECT i.url FROM article_images i WHERE i.article_id = a.id LIMIT 1) AS imagen,
         b.name AS marca, c.name AS categoria, a.slug AS ruta, 'article' AS tipo
@@ -288,13 +337,34 @@ export class Chat implements OnModuleInit {
           OR MATCH(a.description) AGAINST (${o.booleanQuery} IN BOOLEAN MODE))
         ${ofertaFrag}`;
 
-    // build_pc_tabla no tiene FULLTEXT: se busca con LIKE y el precio se suma de sus componentes en soles
-    const conCombos = o.comboLikes.length > 0 && !o.pideOferta;
-    const likeConds = o.comboLikes.map(l =>
-      Prisma.sql`(b.name LIKE ${'%' + l + '%'} OR b.description LIKE ${'%' + l + '%'})`);
+    // build_pc_tabla no tiene FULLTEXT: se busca con LIKE y el precio se suma de sus componentes en soles.
+    // MATCH agregado para combos: si buscan "computadora/computadoras/pc/desktop"
+    // se devuelven TODOS los combos activos (sus nombres son "PC Gamer..." y el
+    // LIKE '%computadora%' nunca coincidiría). También se expanden plurales:
+    // "computadoras" hace match con "computadora" y viceversa.
+    const normalizedLikes = o.comboLikes.map((l) => l.toLowerCase());
+    const esBusquedaComputadora = normalizedLikes.some((w) => COMPUTER_COMBO_TOKENS.has(w));
+    const conCombos = (o.comboLikes.length > 0 || esBusquedaComputadora) && !o.pideOferta;
+    const likeConds = o.comboLikes
+      .flatMap((l) => {
+        const variants = Array.from(
+          new Set(getVariants(l.toLowerCase()).map((v) => v.toLowerCase().trim()).filter((v) => v.length >= 2)),
+        ).slice(0, 6);
+        const terms = variants.length > 0 ? variants : [l];
+        return terms.map(
+          (t) => Prisma.sql`(b.name LIKE ${'%' + t + '%'} OR b.description LIKE ${'%' + t + '%'})`,
+        );
+      });
+    const comboWhereFrag = esBusquedaComputadora
+      ? Prisma.sql`b.status = 1 AND b.slug IS NOT NULL`
+      : Prisma.sql`b.status = 1 AND b.slug IS NOT NULL AND (${Prisma.join(likeConds, ' OR ')})`;
+    // Si hay un combo llamado literalmente "computadora", debe salir primero:
+    // '%computadora%' ya cubre singular+plural (computadoras contiene computadora).
+    const prioridadComboFrag = Prisma.sql`CASE WHEN (b.name LIKE '%computadora%' OR b.description LIKE '%computadora%') THEN 3 WHEN (b.name LIKE '%computador%' OR b.description LIKE '%computador%') THEN 2 ELSE 0 END`;
     const comboSel = conCombos ? Prisma.sql`
       UNION ALL
       (SELECT b.id, b.name AS nombre, 0 AS relevanciaDesc, 0 AS relevanciaCategoria, 0 AS categoriaExacta,
+        ${prioridadComboFrag} AS prioridadCombo,
         COALESCE((
           SELECT SUM(d.quantity * CASE WHEN art.currency_type_id = 1 THEN art.public_price ELSE art.public_price * ${o.rate} END)
           FROM build_detail_pc_tabla d INNER JOIN articles art ON art.id = d.article_id
@@ -303,12 +373,40 @@ export class Chat implements OnModuleInit {
         NULL AS oferta_pct, 0 AS oferta, b.image_build AS imagen,
         NULL AS marca, 'Combos' AS categoria, b.slug AS ruta, 'combo' AS tipo
       FROM build_pc_tabla b
-      WHERE b.status = 1 AND b.slug IS NOT NULL AND (${Prisma.join(likeConds, ' OR ')}))` : Prisma.empty;
+      WHERE ${comboWhereFrag})` : Prisma.empty;
+
+    // Sin booleanQuery (ej: solo "computadora") no hay MATCH de artículos: solo combos.
+    // Orden: el combo llamado "computadora" primero, luego el resto.
+    const sinArticulos = !o.booleanQuery || o.booleanQuery.trim().length === 0;
+    if (sinArticulos) {
+      const [comboRows, comboTot] = await Promise.all([
+        this.prisma.$queryRaw(Prisma.sql`
+          SELECT b.id, b.name AS nombre, 0 AS relevanciaDesc, 0 AS relevanciaCategoria, 0 AS categoriaExacta,
+            ${prioridadComboFrag} AS prioridadCombo,
+            COALESCE((
+              SELECT SUM(d.quantity * CASE WHEN art.currency_type_id = 1 THEN art.public_price ELSE art.public_price * ${o.rate} END)
+              FROM build_detail_pc_tabla d INNER JOIN articles art ON art.id = d.article_id
+              WHERE d.build_pc_id = b.id
+            ), b.total_price) AS precio,
+            NULL AS oferta_pct, 0 AS oferta, b.image_build AS imagen,
+            NULL AS marca, 'Combos' AS categoria, b.slug AS ruta, 'combo' AS tipo
+          FROM build_pc_tabla b
+          WHERE ${conCombos ? comboWhereFrag : Prisma.sql`1 = 0`}
+          ORDER BY prioridadCombo DESC, id ASC
+          LIMIT ${o.limit} OFFSET ${o.offset}`) as any as any[],
+        conCombos
+          ? this.prisma.$queryRaw(Prisma.sql`
+            SELECT COUNT(*) AS total FROM build_pc_tabla b
+            WHERE ${comboWhereFrag}`) as any as any[]
+          : Promise.resolve([{ total: 0 }]),
+      ]);
+      return { rows: comboRows, total: Number((comboTot as any[])[0]?.total ?? 0) };
+    }
 
     const [rows, artTot, comboTot] = await Promise.all([
       this.prisma.$queryRaw(Prisma.sql`
         ${artSel} ${comboSel}
-        ORDER BY tipo DESC, categoriaExacta DESC, relevanciaCategoria DESC, relevanciaDesc DESC, id ASC
+        ORDER BY tipo DESC, prioridadCombo DESC, categoriaExacta DESC, relevanciaCategoria DESC, relevanciaDesc DESC, id ASC
         LIMIT ${o.limit} OFFSET ${o.offset}`) as any as any[],
       this.prisma.$queryRaw(Prisma.sql`
         SELECT COUNT(*) AS total FROM articles a
@@ -320,7 +418,7 @@ export class Chat implements OnModuleInit {
       conCombos
         ? this.prisma.$queryRaw(Prisma.sql`
           SELECT COUNT(*) AS total FROM build_pc_tabla b
-          WHERE b.status = 1 AND b.slug IS NOT NULL AND (${Prisma.join(likeConds, ' OR ')})`) as any as any[]
+          WHERE ${comboWhereFrag}`) as any as any[]
         : Promise.resolve([{ total: 0 }]),
     ]);
     return {
