@@ -467,7 +467,7 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
           include: {
             categories: true,
             brands: true,
-            article_images: { where: { is_main: true }, take: 1 },
+            article_images: { orderBy: [{ is_main: 'desc' }, { position: 'asc' }], take: 1 },
           },
         }),
         this.prisma.articles.count({ where: whereClause }),
@@ -606,7 +606,7 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
               articles: {
                 include: {
                   article_images: {
-                    where: { is_main: true },
+                    orderBy: [{ is_main: 'desc' }, { position: 'asc' }],
                     take: 1,
                   },
                 },

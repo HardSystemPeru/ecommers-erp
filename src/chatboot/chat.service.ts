@@ -307,7 +307,7 @@ export class Chat implements OnModuleInit {
         this.prisma.$queryRaw(Prisma.sql`
           SELECT a.id, a.description AS nombre, 0 AS relevanciaDesc, 0 AS relevanciaCategoria, 0 AS categoriaExacta,
             a.public_price AS precio, a.offer_price_percent AS oferta_pct, a.has_offer AS oferta,
-            (SELECT i.url FROM article_images i WHERE i.article_id = a.id LIMIT 1) AS imagen,
+            (SELECT i.url FROM article_images i WHERE i.article_id = a.id ORDER BY i.is_main DESC, i.position ASC, i.id ASC LIMIT 1) AS imagen,
             b.name AS marca, c.name AS categoria, a.slug AS ruta, 'article' AS tipo
           FROM articles a
           INNER JOIN brands b ON b.id = a.brand_id
@@ -327,7 +327,7 @@ export class Chat implements OnModuleInit {
         (c.name = UPPER(${o.tokensTexto})) AS categoriaExacta,
         0 AS prioridadCombo,
         a.public_price AS precio, a.offer_price_percent AS oferta_pct, a.has_offer AS oferta,
-        (SELECT i.url FROM article_images i WHERE i.article_id = a.id LIMIT 1) AS imagen,
+        (SELECT i.url FROM article_images i WHERE i.article_id = a.id ORDER BY i.is_main DESC, i.position ASC, i.id ASC LIMIT 1) AS imagen,
         b.name AS marca, c.name AS categoria, a.slug AS ruta, 'article' AS tipo
       FROM articles a
       INNER JOIN brands b ON b.id = a.brand_id
@@ -442,7 +442,9 @@ export class Chat implements OnModuleInit {
     const mapRows = (rows: any[]) => rows.map((item: any) => ({
       ...item,
       precio: Number((Number(item?.precio) * rate).toFixed(2)),
-      imagen: item?.imagen ? appURL + item.imagen : null,
+      imagen: item?.imagen
+        ? (String(item.imagen).startsWith('http') ? item.imagen : (appURL || '') + item.imagen)
+        : null,
     }));
 
     // 1) id exacto
@@ -455,6 +457,7 @@ export class Chat implements OnModuleInit {
           SELECT i.url
           FROM article_images i
           WHERE i.article_id = a.id
+          ORDER BY i.is_main DESC, i.position ASC, i.id ASC
           LIMIT 1
         ) AS imagen,
         b.name AS marca,
@@ -474,21 +477,22 @@ export class Chat implements OnModuleInit {
         SELECT
           a.id,
           a.description AS nombre,
-          a.public_price AS precio,
-          (
-            SELECT i.url
-            FROM article_images i
-            WHERE i.article_id = a.id
-            LIMIT 1
-          ) AS imagen,
-          b.name AS marca,
-          c.name AS categoria,
-          a.slug AS ruta
-        FROM articles a
-        INNER JOIN brands b ON b.id = a.brand_id
-        INNER JOIN categories c ON c.id = a.category_id
-        WHERE a.status=1 AND a.venta=1 AND a.habilitado_web=1 AND a.slug IS NOT NULL AND a.id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)
-          AND a.cod_fab LIKE ${like}
+        a.public_price AS precio,
+        (
+          SELECT i.url
+          FROM article_images i
+          WHERE i.article_id = a.id
+          ORDER BY i.is_main DESC, i.position ASC, i.id ASC
+          LIMIT 1
+        ) AS imagen,
+        b.name AS marca,
+        c.name AS categoria,
+        a.slug AS ruta
+      FROM articles a
+      INNER JOIN brands b ON b.id = a.brand_id
+      INNER JOIN categories c ON c.id = a.category_id
+      WHERE a.status=1 AND a.venta=1 AND a.habilitado_web=1 AND a.slug IS NOT NULL AND a.id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)
+        AND a.cod_fab LIKE ${like}
         ORDER BY (a.cod_fab = ${idStr}) DESC, a.id ASC
         LIMIT ${limit}
       ` as any[];
@@ -599,6 +603,7 @@ export class Chat implements OnModuleInit {
           SELECT i.url
           FROM article_images i
           WHERE i.article_id = a.id
+          ORDER BY i.is_main DESC, i.position ASC, i.id ASC
           LIMIT 1
         ) AS imagen,
 
@@ -671,7 +676,7 @@ export class Chat implements OnModuleInit {
       ),
 
       imagen: item.imagen
-        ? appURL + item.imagen
+        ? (String(item.imagen).startsWith('http') ? item.imagen : (appURL || '') + item.imagen)
         : null,
     })),
 
