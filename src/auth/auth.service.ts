@@ -88,7 +88,7 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(dto.password, client.password);
     if (!isPasswordValid) { 
       throw new UnauthorizedException('Credenciales inválidas');
-    }
+    } 
 
     return this.generateAuthResponseLogin(client, meta);
   }
