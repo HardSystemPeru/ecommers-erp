@@ -2894,6 +2894,8 @@ model orders {
   id               BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
   client_id        BigInt         @db.UnsignedBigInt
   document_type_id BigInt?        @db.UnsignedBigInt
+  document_number  String?        @db.VarChar(20)
+  document_type    String?        @db.VarChar(20)
   total            Decimal        @default(0.00) @db.Decimal(10, 2)
   status           orders_status? @default(NUEVO)
   sale_id          BigInt?        @unique(map: "orders_sale_id_unique") @db.UnsignedBigInt

@@ -90,6 +90,8 @@ export class OrdersService {
           data: {
             client_id: clientId,
             document_type_id: createOrderDto.document_type_id,
+            document_number: null, // se actualiza después de validar
+            document_type: null,   // se actualiza después de validar
             status: 'NUEVO',
             total: totales,
             terms: createOrderDto.terms,
@@ -123,6 +125,15 @@ export class OrdersService {
             'Para boleta necesitas registrar tu DNI (8 dígitos)',
           );
         }
+
+        // Guardar el documento del cliente en la orden para que no se pierda si el cliente cambia su documento
+        await tx.orders.update({
+          where: { id: orders.id },
+          data: {
+            document_number: orders.clients?.document_number ?? null,
+            document_type: orders.clients?.document_type ?? null,
+          },
+        });
 
         const item_irderns = await Promise.all(
           createOrderDto.items.map(async (item: any) => {
