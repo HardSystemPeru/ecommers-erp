@@ -79,7 +79,7 @@ export class AuthService {
     // await this.verifyCaptcha(dto.captchaToken);
 
     const email = dto.email.trim().toLowerCase();
-    const client = await this.clientsService.findByEmail(email);
+    const client = await this.clientsService.findByEmailWithPassword(email);
 
     if (!client || !client.password) {
       throw new UnauthorizedException('Credenciales inválidas');

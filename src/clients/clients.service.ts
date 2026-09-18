@@ -62,6 +62,10 @@ export class ClientsService {
     return this.stripPassword(client) as any;
   }
 
+  async findByEmailWithPassword(email: string) {
+    return this.prisma.clients.findUnique({ where: { email } });
+  }
+
   async findByGoogleId(googleId: string) {
     const client = await this.prisma.clients.findUnique({ where: { google_id: googleId } });
     return this.stripPassword(client) as any;
