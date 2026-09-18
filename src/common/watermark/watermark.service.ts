@@ -49,16 +49,21 @@ export class WatermarkService {
         return;
       }
 
-      const base = sharp(imagePath);
+      let base = sharp(imagePath);
       const meta = await base.metadata();
       if (!meta.width || !meta.height) return;
 
-      // No marcar imágenes muy pequeñas (thumbnails / iconos)
-      if (meta.width < 300) return;
+      // Si la imagen es muy pequeña, redimensionar a 500px de ancho
+      const MIN_WIDTH = 500;
+      if (meta.width < MIN_WIDTH) {
+        base = base.resize({ width: MIN_WIDTH, fit: 'inside' });
+      }
 
+      const finalMeta = await base.metadata();
+      const imageWidth = finalMeta.width ?? meta.width;
       const watermarkWidth = Math.max(
         120,
-        Math.round(meta.width * Math.min(Math.max(scale, 0.1), 0.9)),
+        Math.round(imageWidth * Math.min(Math.max(scale, 0.1), 0.9)),
       );
 
       // 1. Logo -> B/N + redimensionado + RGB crudo (normalizamos a RGBA a mano)
@@ -99,9 +104,17 @@ export class WatermarkService {
         .toBuffer();
 
       // 3. Componer centrado sobre la imagen original (sobrescribe el archivo)
-      const out = await sharp(imagePath)
-        .composite([{ input: overlay, gravity: 'centre' }])
-        .toBuffer();
+      const pipeline = base.composite([{ input: overlay, gravity: 'centre' }]);
+
+      // Calidad de salida consistente con backend-hsgestion
+      if (ext === '.jpg' || ext === '.jpeg') {
+        pipeline.jpeg({ quality: 90, chromaSubsampling: '4:4:4' });
+      } else if (ext === '.png') {
+        pipeline.png({ compressionLevel: 6 });
+      } else if (ext === '.webp') {
+        pipeline.webp({ quality: 90 });
+      }
+      const out = await pipeline.toBuffer();
 
       const { writeFile } = await import('fs/promises');
       await writeFile(imagePath, out);
