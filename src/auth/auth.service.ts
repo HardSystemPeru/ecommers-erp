@@ -47,9 +47,9 @@ export class AuthService {
 
     await this.verifyCaptcha(dto.captchaToken);
 
-    if (dto.document_number) {
-      await this.verifyDocumentNumber(dto.document_number);
-    }
+    // if (dto.document_number) {
+    //   await this.verifyDocumentNumber(dto.document_number);
+    // }
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 

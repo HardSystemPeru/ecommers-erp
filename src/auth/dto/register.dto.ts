@@ -38,8 +38,8 @@ export class RegisterDto {
 // })
   password!: string;
 
-  @IsString()
-  // @MaxLength(2000)
+   @IsString()
+  // // @MaxLength(2000)
   captchaToken!: string;
  }
 
