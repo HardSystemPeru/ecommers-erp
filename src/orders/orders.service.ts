@@ -2,8 +2,11 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderStatusFilter } from './dto/find-orders-query.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -16,9 +19,13 @@ import * as path from 'path';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
+    private readonly httpService: HttpService,
+    private readonly config: ConfigService,
   ) {}
 
   private async getDollarRate(): Promise<number> {
@@ -212,6 +219,8 @@ export class OrdersService {
           );
         }
 
+        await this.notifyBackendHSGestion(result.orders);
+
         return result;
       });
   }
@@ -242,6 +251,43 @@ export class OrdersService {
     }
 
     return totales;
+  }
+
+  private async notifyBackendHSGestion(order: any): Promise<void> {
+    const url = this.config.get('BACKEND_HSGESTION_URL');
+    const secret = this.config.get('BACKEND_HSGESTION_SECRET');
+
+    if (!url || !secret) {
+      return;
+    }
+
+    try {
+      await this.httpService.axiosRef.post(
+        `${url}/internal/order-web-created`,
+        {
+          order_id: Number(order.id),
+          company_id: 1,
+          client_name: order.clients
+            ? `${order.clients.names ?? ''} ${order.clients.lastnames ?? ''}`.trim()
+            : null,
+          total: Number(order.total),
+          status: order.status ?? 'NUEVO',
+          items_count: order.item_irderns?.length ?? null,
+          created_at: order.created_at?.toISOString?.() ?? order.created_at ?? null,
+        },
+        {
+          headers: {
+            'x-internal-secret': secret,
+            'Content-Type': 'application/json',
+          },
+          timeout: 5000,
+        },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo notificar a backend-hsgestion: ${(error as Error).message}`,
+      );
+    }
   }
 
   async findAll(
