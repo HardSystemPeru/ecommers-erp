@@ -11,8 +11,8 @@ export class LoginDto {
   @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' })
   password!: string;
 
-  @ApiProperty({ description: 'Token reCAPTCHA requerido en login (anti-bots)', example: '03AGdBq...' })
-  @IsString()
-  captchaToken!: string
+  // @ApiProperty({ description: 'Token reCAPTCHA requerido en login (anti-bots)', example: '03AGdBq...' })
+  // @IsString()
+  // captchaToken!: string
 }
 

@@ -76,7 +76,7 @@ export class AuthService {
 
   // ─── Login Estándar (Clientes) ──────────────────────────────────────────
   async login(dto: LoginDto, meta?: AuthMetadata) {
-     await this.verifyCaptcha(dto.captchaToken);
+    //  await this.verifyCaptcha(dto.captchaToken);
 
     const email = dto.email.trim().toLowerCase();
     const client = await this.clientsService.findByEmailWithPassword(email);

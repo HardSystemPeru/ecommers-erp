@@ -129,7 +129,6 @@ model articles {
   warranties                                                                          warranties[]
   article_images    article_images[]
   reviews reviews[]
-  favorites   favorites[]
   order_items order_items[]
 
   @@index([brand_id], map: "articles_brand_id_foreign")
@@ -1119,13 +1118,13 @@ model favorites {
   id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
   client_id  BigInt   @db.UnsignedBigInt
   article_id BigInt   @db.UnsignedBigInt
+  type       String   @default("article") @db.VarChar(20)
   created_at DateTime @default(now()) @db.Timestamp(0)
-  
-  articles   articles @relation(fields: [article_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "favorites_article_id_foreign")
 
-  @@index([article_id], map: "favorites_article_id_foreign")
-  @@unique([client_id, article_id])
-  @@index([article_id])
+  @@unique([client_id, article_id, type], map: "favorites_client_article_type_unique")
+  @@index([client_id], map: "favorites_client_id_index")
+  @@index([article_id], map: "favorites_article_id_index")
+  @@map("favorites")
 }
 
 model cart {
