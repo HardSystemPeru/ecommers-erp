@@ -1379,6 +1379,7 @@ model payment_methods {
   st_voucher   Boolean?      @default(false)
   advances     advances[]
   collections  collections[]
+  surcharge_percent Decimal       @default(0.00) @db.Decimal(5, 2)
 }
 
 model payment_types {

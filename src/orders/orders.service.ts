@@ -141,6 +141,10 @@ export class OrdersService {
             document_type: orders.clients?.document_type ?? null,
           },
         });
+        const paymentMethod = await this.prisma.payment_methods.findUnique({
+          where: { id: Number(createOrderDto.payment_method_id) },
+        });
+        const surchargePercent = Number(paymentMethod?.surcharge_percent ?? 0);
 
         const item_irderns = await Promise.all(
           createOrderDto.items.map(async (item: any) => {
@@ -154,12 +158,17 @@ export class OrdersService {
               throw new BadRequestException(`Artículo ${item.article_id} no disponible para venta web`);
             }
             const unit_price = article?.public_price;
-            const subtotal = (Number(unit_price) || 0) * Number(item.quantity);
+            const unitPriceNum = Number(unit_price);
+            const surcharge = surchargePercent > 0 ? unitPriceNum * (surchargePercent / 100) : 0;
+            const priceWithSurcharge = unitPriceNum + surcharge;
+            const subtotal = priceWithSurcharge * Number(item.quantity);
+
+
 
             return tx.order_items.create({
               data: {
                 quantity: item.quantity,
-                unit_price: unit_price || 0,
+                unit_price: surchargePercent > 0 ? priceWithSurcharge : unit_price || 0,
                 subtotal: subtotal,
 
                 orders: {
@@ -202,7 +211,20 @@ export class OrdersService {
         );
 
         return {
-          orders: { ...orders, total: totalSoles, item_irderns: itemsEnSoles },
+          orders: { 
+            ...orders
+            // clients:{
+            //   name:orders.clients.names,
+            //   lastnames:orders.clients.lastnames,
+            //   email:orders.clients.email,
+            //   phone: orders.clients.phone,
+            //   document_type: orders.clients.document_type,
+            //   document_number:orders.clients.document_number,
+            //   role:orders.clients.role,
+            //   ruc:orders.clients.ruc_number,
+            //   id: orders.clients.id
+            // }
+            , total: totalSoles, item_irderns: itemsEnSoles },
         };
       })
       .then(async (result) => {
@@ -228,6 +250,10 @@ export class OrdersService {
     createOrderDto: CreateOrderDto,
   ): Promise<number> {
     const dollarRate = await this.getDollarRate();
+    const paymentMethod = await this.prisma.payment_methods.findUnique({
+      where: { id: Number(createOrderDto.payment_method_id) },
+    });
+    const surchargePercent = Number(paymentMethod?.surcharge_percent ?? 0);
     let totales = 0;
 
     for (const item of createOrderDto.items) {
@@ -245,7 +271,9 @@ export class OrdersService {
         consulta?.currency_type_id,
         dollarRate,
       );
-      const subtotal = unit_price * Number(item.quantity);
+      const surcharge = surchargePercent > 0 ? unit_price * (surchargePercent / 100) : 0;
+      const priceWithSurcharge = unit_price + surcharge;
+      const subtotal = priceWithSurcharge * Number(item.quantity);
 
       totales += subtotal;
     }
@@ -337,6 +365,7 @@ export class OrdersService {
         o.client_id,
         o.total,
         o.status,
+        o.payment_method_id,
         c.id AS client_id,
         c.names AS client_name,
         o.created_at,

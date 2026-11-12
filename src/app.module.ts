@@ -24,6 +24,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { CsrfGuard } from './auth/csrf/csrf.guard';
+import { PaymentMethodModule } from './payment-method/payment-method.module';
 
 
 
@@ -54,6 +55,7 @@ import { CsrfGuard } from './auth/csrf/csrf.guard';
     TermsModule,
     WatermarkModule,
     PriceFeedModule,
+    PaymentMethodModule,
   ],
   controllers: [],
   providers: [

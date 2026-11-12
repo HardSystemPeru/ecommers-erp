@@ -36,6 +36,9 @@ export class CreateOrderDto {
   @IsNotEmpty()
   document_type_id!: number;
 
+  @IsNumber()
+  payment_method_id!: number;
+
   @IsIn([true], {
     message: 'Debes aceptar los términos y condiciones para crear la orden',
   })

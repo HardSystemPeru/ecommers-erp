@@ -1,0 +1,15 @@
+
+### Error de autenticación CredentialsSignin
+GET https://cyberhouse.pe/api/auth/error?error=CredentialsSignin&provider=credentials
+
+### Consultar configuración de proveedores
+GET https://cyberhouse.pe/prueba/api/auth/providers
+
+### Consultar sesión
+GET https://cyberhouse.pe/prueba/api/auth/session
+
+### Consultar configuración CSRF
+GET https://cyberhouse.pe/prueba/api/auth/csrf
+
+### Consultar configuración CSRF
+GET http://192.168.18.26:3000/api/articles

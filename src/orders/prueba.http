@@ -1,0 +1,61 @@
+### 1️⃣ Registrar un nuevo usuario (solo la primera vez)
+### Se usa un captchaToken placeholder; el backend lo acepta por ahora.
+POST http://localhost:3009/api/auth/register
+Content-Type: application/json
+
+{
+  "names": "Juan",
+  "lastnames": "Perez",
+  "email": "juan.perez@example.com",
+  "password": "123456",
+  "document_type": "DNI",
+  "document_number": "12345678",
+  "phone": "987654321",
+  "captchaToken": "dummy"
+}
+
+### 2️⃣ Iniciar sesión
+### Devuelve tokens (access_token y refresh_token) en el cuerpo y en cookies HttpOnly.
+POST http://localhost:3009/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "juan.perez@example.com",
+  "password": "123456"
+}
+
+### 3️⃣ Después de obtener los tokens
+### Lo más cómodo: copiar el valor de `access_token` que aparece en el cuerpo de la respuesta.
+### Luego, en las peticiones siguientes, usar ese token de una de estas formas:
+
+### Opción A: Usando variables de la extensión REST Client (recomendado)
+### Define la variable ejecutando primero el login y copiando el valor, o añade en VS Code:
+###   @token = TU_TOKEN_AQUI
+### Y luego en las peticiones usar Authorization: Bearer {{token}}.
+
+### Opción B: Pegar el token directamente (sin necesidad de variables)
+### Reemplaza `TU_TOKEN_AQUI` por el token real que obtuviste en el login.
+POST http://localhost:3009/api/orders
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3IiwiZW1haWwiOiJqdWFuLnBlcmV6QGV4YW1wbGUuY29tIiwidXNlcm5hbWUiOiJKdWFuIFBlcmV6IiwianRpIjoiYTA2YTlhNTktYmEyMC00YzUwLTg2ZWQtZWYzZGRmMzM0MGM1IiwiaWF0IjoxNzk0NTEwMTYwLCJleHAiOjE3OTQ1Mzg5NjB9.9GD47pfL0pgMBjiM7PyakM10SA0Di5AWVUMt_7XH0gg
+
+{
+  "client_id": 1,
+  "document_type_id": 3,
+  "payment_method_id": 2,
+  "terms": true,
+  "items": [
+    {
+      "article_id": 9194,
+      "quantity": 1
+    },
+    {
+      "article_id": 9196,
+      "quantity": 1
+    }
+  ]
+}
+
+### 5️⃣ Listar todas las órdenes
+GET http://localhost:3009/api/orders
+Authorization: Bearer TU_TOKEN_AQUI
