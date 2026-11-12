@@ -61,5 +61,5 @@ GET http://localhost:3009/api/orders
 Authorization: Bearer TU_TOKEN_AQUI
 
 ### 5 Listar todas las órdenes
-GET http://localhost:3009/api/orders/detalle/20
+GET http://localhost:3009/api/orders/detalle/65
 Authorization: Bearer TU_TOKEN_AQUI

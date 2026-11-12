@@ -234,7 +234,8 @@ export class CartService {
     const result = await Promise.all(
       rows.map((r) => this.buildCartResponse(r, dollarRate)),
     );
-    return result;
+    // Filtrar ítems que fueron removidos (artículo ya no existe en BD)
+    return result.filter((item) => item.article != null);
   }
 
   async addToCart(

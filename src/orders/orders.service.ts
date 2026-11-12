@@ -370,6 +370,8 @@ export class OrdersService {
           items_count: order.item_irderns?.length ?? null,
           created_at:
             order.created_at?.toISOString?.() ?? order.created_at ?? null,
+          tipo_cambio: order.tipo_cambio,
+          currency_types_id: order.currency_types_id,
         },
         {
           headers: {
