@@ -80,7 +80,7 @@ export class OrdersService {
 
     const tipoCambio = dollarRate > 0 ? dollarRate : 0;
 
-    const totales = await this.calculateTotales(createOrderDto);
+    const { totalDollar, totalSoles } = await this.calculateTotales(createOrderDto, true);
 
     // Validar disponibilidad antes de crear la orden: habilitado_web, status, venta, saldo
     // Agrupar cantidades por article_id por si el dto trae duplicados
@@ -141,7 +141,7 @@ export class OrdersService {
             document_type: null, // se actualiza después de validar
             status: 'NUEVO',
             payment_method_id: createOrderDto.payment_method_id,
-            total: totales,
+            total: totalDollar,
             terms: createOrderDto.terms,
             tipo_cambio: tipoCambio,
             currency_types_id: currencyTypesId,
@@ -309,7 +309,8 @@ export class OrdersService {
   }
   private async calculateTotales(
     createOrderDto: CreateOrderDto,
-  ): Promise<number> {
+    inDollars = true
+  ): Promise<{ totalDollar: number; totalSoles: number }> {
     const dollarRate = await this.getDollarRate();
     const paymentMethod = await this.prisma.payment_methods.findUnique({
       where: { id: Number(createOrderDto.payment_method_id) },
@@ -320,7 +321,7 @@ export class OrdersService {
     const surchargePercent = isCardPayment
       ? Number(paymentMethod?.surcharge_percent ?? 0)
       : 0;
-    let totales = 0;
+    let totalDollar = 0;
 
     for (const item of createOrderDto.items) {
       const consulta = await this.prisma.articles.findUnique({
@@ -332,20 +333,19 @@ export class OrdersService {
           currency_type_id: true,
         },
       });
-      const unit_price = this.toSoles(
-        consulta?.public_price,
-        consulta?.currency_type_id,
-        dollarRate,
-      );
+      const unitPriceDollar = Number(consulta?.public_price) || 0;
       const surcharge =
-        surchargePercent > 0 ? unit_price * (surchargePercent / 100) : 0;
-      const priceWithSurcharge = unit_price + surcharge;
-      const subtotal = priceWithSurcharge * Number(item.quantity);
-
-      totales += subtotal;
+        surchargePercent > 0 ? unitPriceDollar * (surchargePercent / 100) : 0;
+      const priceWithSurcharge = unitPriceDollar + surcharge;
+      const subtotalDollar = priceWithSurcharge * Number(item.quantity);
+      totalDollar += subtotalDollar;
     }
 
-    return totales;
+    const totalSoles = inDollars
+      ? this.toSoles(totalDollar, '1', dollarRate)
+      : totalDollar;
+
+    return { totalDollar, totalSoles };
   }
 
   private async notifyBackendHSGestion(order: any): Promise<void> {
