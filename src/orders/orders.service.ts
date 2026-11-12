@@ -68,6 +68,18 @@ export class OrdersService {
       throw new UnauthorizedException('No se pudo determinar el cliente');
     }
 
+    const dollarRate = await this.getDollarRate();
+
+    let currencyTypesId = BigInt(1);
+    if (createOrderDto.items && createOrderDto.items.length > 0) {
+      const firstArticle = await this.prisma.articles.findUnique({
+        where: { id: createOrderDto.items[0].article_id },
+      });
+      currencyTypesId = firstArticle?.currency_type_id ?? BigInt(1);
+    }
+
+    const tipoCambio = dollarRate > 0 ? dollarRate : 0;
+
     const totales = await this.calculateTotales(createOrderDto);
 
     // Validar disponibilidad antes de crear la orden: habilitado_web, status, venta, saldo
@@ -131,6 +143,8 @@ export class OrdersService {
             payment_method_id: createOrderDto.payment_method_id,
             total: totales,
             terms: createOrderDto.terms,
+            tipo_cambio: tipoCambio,
+            currency_types_id: currencyTypesId,
           },
           include: {
             clients: true,
@@ -421,6 +435,8 @@ export class OrdersService {
         o.status,
         o.payment_method_id,
         p.surcharge_percent,
+        o.tipo_cambio,
+        o.currency_types_id,
         c.id AS client_id,
         c.names AS client_name,
         o.created_at,
@@ -507,13 +523,15 @@ JSON_OBJECT(
         limit,
         total,
         totalPages: Math.max(1, Math.ceil(total / limit)),
-        hasNextPage: page < Math.ceil(total / limit),
-        hasPrevPage: page > 1,
-      },
-      // Incluir campos de payment_method al nivel de la orden
-      payment_method_id: data.length > 0 ? data[0].payment_method_id : null,
-      surcharge_percent: data.length > 0 ? data[0].surcharge_percent : null,
-    };
+hasNextPage: page < Math.ceil(total / limit),
+      hasPrevPage: page > 1,
+    },
+    // Incluir campos de payment_method al nivel de la orden
+    payment_method_id: data.length > 0 ? data[0].payment_method_id : null,
+    surcharge_percent: data.length > 0 ? data[0].surcharge_percent : null,
+    tipo_cambio: data.length > 0 ? data[0].tipo_cambio : null,
+    currency_types_id: data.length > 0 ? data[0].currency_types_id : null,
+  };
   }
 
   private assertOrderAccess(
@@ -542,6 +560,8 @@ JSON_OBJECT(
    o.total,
    o.status,
    o.created_at,
+   o.tipo_cambio,
+   o.currency_types_id,
    o.payment_method_id,
    p.surcharge_percent
  FROM orders o
@@ -568,6 +588,8 @@ JSON_OBJECT(
       o.status,
       o.payment_method_id,
       p.surcharge_percent,
+      o.tipo_cambio,
+      o.currency_types_id,
       c.id AS client_id,
       c.names AS client_name,
       o.created_at,
