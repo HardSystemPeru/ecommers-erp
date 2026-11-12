@@ -10,6 +10,6 @@ export class OptionalJwtAuthGuard extends AuthGuard('jwt') {
   }
 
   canActivate(context: ExecutionContext) {
-    return super.canActivate(context) as Promise<boolean> ?? true;
+    return (super.canActivate(context) as Promise<boolean>) ?? true;
   }
 }

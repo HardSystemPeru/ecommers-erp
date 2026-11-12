@@ -4,7 +4,7 @@ import {
   Body,
   Get,
   UseGuards,
-  Res, 
+  Res,
   Patch,
   Req,
   HttpCode,
@@ -39,20 +39,34 @@ export class AuthController {
 
   @Post('register')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async register( @Body() body: RegisterDto, @Req() req: Request,@Res({ passthrough: true }) response: Response,) {
-    const { accessToken, refreshToken, user } = await this.authService.register( body, this.extractMeta(req));
+  async register(
+    @Body() body: RegisterDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { accessToken, refreshToken, user } = await this.authService.register(
+      body,
+      this.extractMeta(req),
+    );
 
     this.setAccessCookie(response, accessToken);
     this.setRefreshCookie(response, refreshToken);
 
-    return { success: true, user }
+    return { success: true, user };
   }
 
   @Post('login')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @UseInterceptors(BruteForceInterceptor)
-  async login( @Body() body: LoginDto, @Req() req: Request, @Res({ passthrough: true }) response: Response,) {
-    const { accessToken, refreshToken, user } = await this.authService.login(body, this.extractMeta(req));
+  async login(
+    @Body() body: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { accessToken, refreshToken, user } = await this.authService.login(
+      body,
+      this.extractMeta(req),
+    );
 
     this.setAccessCookie(response, accessToken);
     this.setRefreshCookie(response, refreshToken);
@@ -62,8 +76,13 @@ export class AuthController {
 
   @Post('google')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  async googleLogin( @Body() body: GoogleAuthDto, @Req() req: Request, @Res({ passthrough: true }) response: Response,) {
-    const { accessToken, refreshToken, user } = await this.authService.loginWithGoogle( body.token, this.extractMeta(req) );
+  async googleLogin(
+    @Body() body: GoogleAuthDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { accessToken, refreshToken, user } =
+      await this.authService.loginWithGoogle(body.token, this.extractMeta(req));
 
     this.setAccessCookie(response, accessToken);
     this.setRefreshCookie(response, refreshToken);
@@ -73,17 +92,21 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.CREATED)
-  async logout(@Req() request: Request, @Res({ passthrough: true }) response: Response,) {
-
-    const accessToken = (request as any).cookies?.access_token as string | undefined;
+  async logout(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const accessToken = (request as any).cookies?.access_token as
+      string | undefined;
     if (accessToken) {
       try {
         const payload: any = this.jwtService.verify(accessToken, {
           secret: this.configService.get<string>('JWT_SECRET'),
           ignoreExpiration: true,
-        } as any);
+        });
         if (payload?.jti) {
-          const expMs = (payload.exp ?? Math.floor(Date.now() / 1000) + 3600) * 1000;
+          const expMs =
+            (payload.exp ?? Math.floor(Date.now() / 1000) + 3600) * 1000;
           this.tokenRevocation.revoke(payload.jti, expMs);
         }
       } catch {}
@@ -100,7 +123,7 @@ export class AuthController {
       sameSite: 'lax',
       path: '/api',
     });
- 
+
     response.clearCookie('refresh_token', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -110,7 +133,7 @@ export class AuthController {
 
     return { success: true, message: 'Sesión cerrada correctamente.' };
   }
- 
+
   @Get('profile')
   @UseGuards(AuthGuard('jwt'))
   getProfile(@GetClient() client: any) {
@@ -120,9 +143,17 @@ export class AuthController {
   @Post('login-admin')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @UseInterceptors(BruteForceInterceptor)
-  async loginAdmin( @Body() dto: LoginAdminDto, @Req() req: Request, @Res({ passthrough: true }) response: Response,) {
+  async loginAdmin(
+    @Body() dto: LoginAdminDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
     const { message, accessToken, refreshToken, user } =
-      await this.authService.loginAdminUpdateImage( dto.username, dto.password, this.extractMeta(req) );
+      await this.authService.loginAdminUpdateImage(
+        dto.username,
+        dto.password,
+        this.extractMeta(req),
+      );
 
     this.setAccessCookie(response, accessToken);
     this.setRefreshCookie(response, refreshToken);
@@ -146,25 +177,38 @@ export class AuthController {
   @Post('reset-password')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.CREATED)
-  resetPassword( @Body('token') token: string, @Body('password') password: string ) {
+  resetPassword(
+    @Body('token') token: string,
+    @Body('password') password: string,
+  ) {
     return this.authService.resetPassword(token, password);
   }
 
   @Post('refresh')
-  async refresh(@Req() request: Request, @Res({ passthrough: true }) response: Response,) {
-  const refreshToken = request.cookies?.refresh_token;
+  async refresh(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const refreshToken = request.cookies?.refresh_token;
 
-  if (!refreshToken) {
-    throw new UnauthorizedException('No hay sesión activa');
+    if (!refreshToken) {
+      throw new UnauthorizedException('No hay sesión activa');
+    }
+
+    const {
+      accessToken,
+      refreshToken: newRefreshToken,
+      user,
+    } = await this.authService.refreshAccessToken(
+      refreshToken,
+      this.extractMeta(request),
+    );
+
+    this.setAccessCookie(response, accessToken);
+    this.setRefreshCookie(response, newRefreshToken);
+
+    return { success: true, user };
   }
-
-  const { accessToken, refreshToken: newRefreshToken, user } = await this.authService.refreshAccessToken(refreshToken, this.extractMeta(request));
-
-  this.setAccessCookie(response, accessToken);
-  this.setRefreshCookie(response, newRefreshToken);
-
-  return { success: true, user };
-}
 
   // ────────────────────────────────────────────
   // Helpers privados
@@ -202,24 +246,24 @@ export class AuthController {
     });
   }
 
-private extractMeta(req: Request) {
-  const userAgent = (req.headers['user-agent'] as string)?.slice(0, 500);
-  const parser = new UAParser(userAgent);
-  const browser = parser.getBrowser();
-  const os = parser.getOS();
+  private extractMeta(req: Request) {
+    const userAgent = (req.headers['user-agent'] as string)?.slice(0, 500);
+    const parser = new UAParser(userAgent);
+    const browser = parser.getBrowser();
+    const os = parser.getOS();
 
-  const deviceName = browser.name && os.name ? `${browser.name} en ${os.name}` : undefined;
+    const deviceName =
+      browser.name && os.name ? `${browser.name} en ${os.name}` : undefined;
 
-  return {
-    ip: this.extractIp(req)?.slice(0, 45),
-    userAgent,
-    deviceName,
-  };
-}
-
-private extractIp(req: any): string {
-  const forwarded = req.headers['x-forwarded-for'] as string;
-  return forwarded ? forwarded.split(',')[0].trim() : req.ip;
+    return {
+      ip: this.extractIp(req)?.slice(0, 45),
+      userAgent,
+      deviceName,
+    };
   }
 
+  private extractIp(req: any): string {
+    const forwarded = req.headers['x-forwarded-for'] as string;
+    return forwarded ? forwarded.split(',')[0].trim() : req.ip;
+  }
 }

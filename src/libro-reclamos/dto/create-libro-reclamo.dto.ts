@@ -1,5 +1,14 @@
 // src/complaints/dto/create-complaint.dto.ts
-import { IsEmail, IsEnum, IsNotEmpty, IsNumberString, IsOptional, IsString, Length, Matches } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsNumberString,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+} from 'class-validator';
 
 export enum WellHired {
   PRODUCTO = 'producto',
@@ -12,13 +21,16 @@ export enum TypeComplaint {
 }
 
 export class CreateLibroReclamoDto {
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   customer_name!: string;
 
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   customer_lastname!: string;
 
-  @IsString() @Length(8, 11)
+  @IsString()
+  @Length(8, 11)
   dni_ruc!: string;
 
   @IsEmail()
@@ -27,22 +39,27 @@ export class CreateLibroReclamoDto {
   @Matches(/^\d{9}$/, { message: 'phone must be 9 digits' })
   phone!: string;
 
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   address!: string;
 
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   parent_data?: string;
 
   @IsEnum(WellHired)
   well_hired!: WellHired;
 
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   description!: string;
 
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   detail_complaint!: string;
 
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   order?: string;
 
   @IsNumberString()
@@ -51,9 +68,11 @@ export class CreateLibroReclamoDto {
   @IsEnum(TypeComplaint)
   type_complaint!: TypeComplaint;
 
-  @IsOptional() @IsString()
+  @IsOptional()
+  @IsString()
   observations?: string;
 
-  @IsString() @IsNotEmpty()
+  @IsString()
+  @IsNotEmpty()
   recaptcha_token!: string;
 }

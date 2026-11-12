@@ -37,26 +37,24 @@ export class ReviewsController {
     return this.reviewsService.findByClient(client.id);
   }
 
-@Patch(':id')
-@UseGuards(JwtAuthGuard)
-update(
-  @Param('id') id: string,
-  @Body() updateReviewDto: UpdateReviewDto,
-  @GetClient() user: any,
-) {
-  return this.reviewsService.update(
-    id,
-    Number(updateReviewDto.article_id),
-    updateReviewDto,
-    user.id,
-  );
-}
-
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard)
+  update(
+    @Param('id') id: string,
+    @Body() updateReviewDto: UpdateReviewDto,
+    @GetClient() user: any,
+  ) {
+    return this.reviewsService.update(
+      id,
+      Number(updateReviewDto.article_id),
+      updateReviewDto,
+      user.id,
+    );
+  }
 
   @Delete(':id')
   @UseGuards(AuthGuard('jwt'))
   remove(@Param('id') id: string, @GetClient() client: any) {
     return this.reviewsService.remove(id, client.id);
   }
-
 }

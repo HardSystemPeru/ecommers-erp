@@ -6,7 +6,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { calcComboTotals, priceComboLine } from '../articles/utils/combo-price.util';
+import {
+  calcComboTotals,
+  priceComboLine,
+} from '../articles/utils/combo-price.util';
 
 type FavoriteType = 'article' | 'combo';
 
@@ -41,7 +44,10 @@ export class FavoritesService {
     return undefined;
   }
 
-  private async resolveType(articleId: string, type?: FavoriteType): Promise<FavoriteType> {
+  private async resolveType(
+    articleId: string,
+    type?: FavoriteType,
+  ): Promise<FavoriteType> {
     if (type) return type;
     try {
       const art = await this.prisma.articles.findUnique({
@@ -61,7 +67,9 @@ export class FavoritesService {
     } catch {
       // ignore
     }
-    throw new NotFoundException('No se encontró el artículo o combo seleccionado');
+    throw new NotFoundException(
+      'No se encontró el artículo o combo seleccionado',
+    );
   }
 
   private async validateExists(articleId: string, type: FavoriteType) {
@@ -95,7 +103,10 @@ export class FavoritesService {
       });
       return this.serialize(favorite);
     } catch (error: any) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       if (error.code === 'P2002') {
@@ -107,7 +118,9 @@ export class FavoritesService {
 
   async removeFavorite(clientId: number, articleId: string, type?: string) {
     const normalized = this.normalizeType(type);
-    const types: FavoriteType[] = normalized ? [normalized] : ['article', 'combo'];
+    const types: FavoriteType[] = normalized
+      ? [normalized]
+      : ['article', 'combo'];
     let lastNotFound = false;
 
     for (const t of types) {
@@ -142,7 +155,10 @@ export class FavoritesService {
     pagination?: { page?: string | number; limit?: string | number },
   ) {
     const page = Math.max(1, Math.trunc(Number(pagination?.page)) || 1);
-    const limit = Math.min(100, Math.max(1, Math.trunc(Number(pagination?.limit)) || 10));
+    const limit = Math.min(
+      100,
+      Math.max(1, Math.trunc(Number(pagination?.limit)) || 10),
+    );
     const where = { client_id: BigInt(clientId) };
 
     const [favorites, total] = await Promise.all([
@@ -173,7 +189,9 @@ export class FavoritesService {
 
   async isFavorite(clientId: number, articleId: string, type?: string) {
     const normalized = this.normalizeType(type);
-    const types: FavoriteType[] = normalized ? [normalized] : ['article', 'combo'];
+    const types: FavoriteType[] = normalized
+      ? [normalized]
+      : ['article', 'combo'];
     const dollarRate = await this.getDollarRate();
 
     for (const t of types) {
@@ -195,7 +213,7 @@ export class FavoritesService {
 
   private async buildFavoriteResponse(row: any, dollarRate: number) {
     const base = this.serialize(row);
-    const type: FavoriteType = (row.type === 'combo' ? 'combo' : 'article') as FavoriteType;
+    const type: FavoriteType = row.type === 'combo' ? 'combo' : 'article';
     let item: any = null;
 
     if (type === 'combo') {
@@ -233,17 +251,24 @@ export class FavoritesService {
 
   private async serializeCombo(combo: any, dollarRate: number) {
     if (!combo) return null;
-    const articleIds = (combo.build_detail_pc_tabla || []).map((d: any) => d.articles.id);
+    const articleIds = (combo.build_detail_pc_tabla || []).map(
+      (d: any) => d.articles.id,
+    );
     const { Prisma } = await import('@prisma/client');
     const stockRows: any[] = articleIds.length
-      ? await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})`
+      ? await this.prisma
+          .$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})`
       : [];
     const stockMap = new Map<string, number>();
-    stockRows.forEach((r: any) => stockMap.set(String(r.article_id), Number(r.saldo)));
+    stockRows.forEach((r: any) =>
+      stockMap.set(String(r.article_id), Number(r.saldo)),
+    );
     const details = combo.build_detail_pc_tabla || [];
     const items = details.map((detail: any) => {
       const art = detail.articles;
-      const publicPrice = art.public_price ? parseFloat(art.public_price.toString()) : null;
+      const publicPrice = art.public_price
+        ? parseFloat(art.public_price.toString())
+        : null;
       const currencyStr = art.currency_type_id?.toString();
       const line = priceComboLine(art, dollarRate);
       return {
@@ -255,7 +280,12 @@ export class FavoritesService {
         name: art.description,
         public_price: publicPrice,
         public_price_soles: publicPrice
-          ? parseFloat((currencyStr === '1' ? publicPrice : publicPrice * dollarRate).toFixed(2))
+          ? parseFloat(
+              (currencyStr === '1'
+                ? publicPrice
+                : publicPrice * dollarRate
+              ).toFixed(2),
+            )
           : null,
         public_price_dolares: publicPrice
           ? parseFloat(
@@ -267,7 +297,8 @@ export class FavoritesService {
               ).toFixed(2),
             )
           : null,
-        precio_final: art.precio_final != null ? Number(art.precio_final) : null,
+        precio_final:
+          art.precio_final != null ? Number(art.precio_final) : null,
         has_offer: art.has_offer ? 1 : 0,
         offer_price_percent: Number(art.offer_price_percent || 0),
         effective_price: line.effective_price,
@@ -277,7 +308,9 @@ export class FavoritesService {
         category: art.categories
           ? { id: art.categories.id.toString(), name: art.categories.name }
           : null,
-        brand: art.brands ? { id: art.brands.id.toString(), name: art.brands.name } : null,
+        brand: art.brands
+          ? { id: art.brands.id.toString(), name: art.brands.name }
+          : null,
         article_images: (art.article_images || []).map((img: any) => ({
           id: img.id.toString(),
           url: this.formatImageUrl(img.url),
@@ -305,7 +338,9 @@ export class FavoritesService {
   private serializeArticle(article: any, dollarRate: number = 0) {
     if (!article) return null;
     const { image_url, ...articleData } = article;
-    const publicPrice = article.public_price ? parseFloat(article.public_price.toString()) : null;
+    const publicPrice = article.public_price
+      ? parseFloat(article.public_price.toString())
+      : null;
     const offerPct = Number(article.offer_price_percent || 0);
     const hasOffer =
       article.has_offer === true || article.has_offer === 1 || offerPct > 0;
@@ -355,14 +390,17 @@ export class FavoritesService {
             category_id: article.sub_categories.category_id.toString(),
           }
         : null,
-      brands: article.brands ? { ...article.brands, id: article.brands.id.toString() } : null,
+      brands: article.brands
+        ? { ...article.brands, id: article.brands.id.toString() }
+        : null,
     };
   }
 
   private formatImageUrl(url: string | null): string | null {
     if (!url) return null;
     if (url.startsWith('http')) return url;
-    const baseUrl = this.configService.get('APP_URL') || 'http://192.168.18.26:3000';
+    const baseUrl =
+      this.configService.get('APP_URL') || 'http://192.168.18.26:3000';
     return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
   }
 }

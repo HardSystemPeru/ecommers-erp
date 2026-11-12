@@ -26,8 +26,6 @@ import { APP_GUARD } from '@nestjs/core';
 import { CsrfGuard } from './auth/csrf/csrf.guard';
 import { PaymentMethodModule } from './payment-method/payment-method.module';
 
-
-
 @Module({
   imports: [
     EventEmitterModule.forRoot(),

@@ -33,7 +33,10 @@ export class WatermarkService {
    * - Logo en blanco y negro (grayscale), semitransparente, centrado y grande.
    * - Best-effort: si algo falla (gif, logo ausente, etc.) registra un warn y no lanza.
    */
-  async applyToFile(imagePath: string, options: WatermarkOptions = {}): Promise<void> {
+  async applyToFile(
+    imagePath: string,
+    options: WatermarkOptions = {},
+  ): Promise<void> {
     const { scale = 0.55, opacity = 0.35, backgroundThreshold = 200 } = options;
 
     try {
@@ -45,7 +48,9 @@ export class WatermarkService {
       if (!SUPPORTED_EXT.has(ext)) return; // skip gif/avif para no romper animaciones u otros formatos
 
       if (!existsSync(this.logoPath)) {
-        this.logger.warn(`Watermark: no se encontró el logo en ${this.logoPath}`);
+        this.logger.warn(
+          `Watermark: no se encontró el logo en ${this.logoPath}`,
+        );
         return;
       }
 
@@ -89,7 +94,11 @@ export class WatermarkService {
         const r = rgba[i];
         const g = rgba[i + 1];
         const b = rgba[i + 2];
-        if (r >= backgroundThreshold && g >= backgroundThreshold && b >= backgroundThreshold) {
+        if (
+          r >= backgroundThreshold &&
+          g >= backgroundThreshold &&
+          b >= backgroundThreshold
+        ) {
           rgba[i + 3] = 0; // fondo del logo -> totalmente transparente
         } else {
           // conserva la forma del logo pero con la opacidad pedida
@@ -119,7 +128,9 @@ export class WatermarkService {
       const { writeFile } = await import('fs/promises');
       await writeFile(imagePath, out);
     } catch (error) {
-      this.logger.warn(`Watermark: no se pudo aplicar a ${imagePath}: ${error}`);
+      this.logger.warn(
+        `Watermark: no se pudo aplicar a ${imagePath}: ${error}`,
+      );
     }
   }
 }

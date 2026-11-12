@@ -15,10 +15,13 @@ export interface RevocationStore {
 @Injectable()
 class InMemoryRevocationStore implements RevocationStore {
   private readonly map = new Map<string, number>(); // jti -> expiresAt (ms)
-  private readonly sweep = setInterval(() => {
-    const now = Date.now();
-    for (const [k, v] of this.map) if (v < now) this.map.delete(k);
-  }, 5 * 60 * 1000);
+  private readonly sweep = setInterval(
+    () => {
+      const now = Date.now();
+      for (const [k, v] of this.map) if (v < now) this.map.delete(k);
+    },
+    5 * 60 * 1000,
+  );
 
   constructor() {
     this.sweep.unref?.();

@@ -22,7 +22,8 @@ export interface PriceEvent {
 const PRICE_CHANGED_EVENT = 'price.changed';
 
 function normalizeCompany(companyId?: string | number | null): string {
-  if (companyId === undefined || companyId === null || companyId === '') return 'all';
+  if (companyId === undefined || companyId === null || companyId === '')
+    return 'all';
   return String(companyId);
 }
 
@@ -58,7 +59,9 @@ export class PriceFeedService {
     });
 
     const fxRate = fx ? Number(fx.parallel_rate) : 0;
-    const fxUpdatedAt = fx?.updated_at ? new Date(fx.updated_at).toISOString() : null;
+    const fxUpdatedAt = fx?.updated_at
+      ? new Date(fx.updated_at).toISOString()
+      : null;
     const maxArticleUpdatedAt = latest?.updated_at
       ? new Date(latest.updated_at).toISOString()
       : null;
@@ -79,7 +82,9 @@ export class PriceFeedService {
   /** Publica un cambio (viene del webhook de hsgestion) y lo reparte por SSE. */
   async publish(dto: PriceChangedDto): Promise<PriceEvent> {
     const companyId = normalizeCompany(dto.companyId);
-    const version = await this.getVersion(companyId === 'all' ? undefined : companyId);
+    const version = await this.getVersion(
+      companyId === 'all' ? undefined : companyId,
+    );
 
     const event: PriceEvent = {
       id: ++this.seq,
@@ -105,7 +110,9 @@ export class PriceFeedService {
    * - Un suscriptor 'all' recibe todo.
    * - Un suscriptor de un tenant recibe sus eventos + los broadcast ('all', ej. tipo de cambio).
    */
-  subscribe(companyId?: string): Observable<{ data: object; id?: string; type?: string }> {
+  subscribe(
+    companyId?: string,
+  ): Observable<{ data: object; id?: string; type?: string }> {
     const company = normalizeCompany(companyId);
 
     const matches = (e: PriceEvent) =>
@@ -119,7 +126,8 @@ export class PriceFeedService {
 
       // Sync inmediata: el front sabe al conectar si ya está desactualizado.
       const last =
-        this.lastByCompany.get(company) ?? (company !== 'all' ? this.lastByCompany.get('all') : undefined);
+        this.lastByCompany.get(company) ??
+        (company !== 'all' ? this.lastByCompany.get('all') : undefined);
       if (last) {
         subscriber.next({ ...last, type: 'sync' as const });
       }

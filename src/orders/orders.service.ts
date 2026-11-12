@@ -34,7 +34,11 @@ export class OrdersService {
       select: { parallel_rate: true },
     });
 
-    return exchangeRate ? (Number(exchangeRate.parallel_rate) || Number(exchangeRate.parallel_rate) || 0) : 0;
+    return exchangeRate
+      ? Number(exchangeRate.parallel_rate) ||
+          Number(exchangeRate.parallel_rate) ||
+          0
+      : 0;
   }
 
   private toSoles(
@@ -72,23 +76,47 @@ export class OrdersService {
     for (const it of createOrderDto.items as any[]) {
       const key = String(it.article_id);
       const qty = Number(it.quantity) || 0;
-      if (qty <= 0) throw new BadRequestException(`Cantidad inválida para artículo ${key}`);
+      if (qty <= 0)
+        throw new BadRequestException(`Cantidad inválida para artículo ${key}`);
       qtyByArticle.set(key, (qtyByArticle.get(key) || 0) + qty);
     }
     for (const [articleIdStr, totalQty] of qtyByArticle.entries()) {
       const articleId = BigInt(articleIdStr);
       const article = await this.prisma.articles.findUnique({
         where: { id: articleId },
-        select: { id: true, status: true, venta: true, habilitado_web: true, description: true },
+        select: {
+          id: true,
+          status: true,
+          venta: true,
+          habilitado_web: true,
+          description: true,
+        },
       });
-      if (!article) throw new BadRequestException(`Artículo ${articleIdStr} no existe`);
-      if (Number(article.status) !== 1) throw new BadRequestException(`Artículo "${article.description ?? articleIdStr}" no disponible (status inactivo)`);
-      if ((article as any).venta !== true) throw new BadRequestException(`Artículo "${article.description ?? articleIdStr}" no disponible para venta`);
-      if ((article as any).habilitado_web !== true) throw new BadRequestException(`Artículo "${article.description ?? articleIdStr}" no habilitado para web`);
-      const stockRows: any[] = await this.prisma.$queryRaw`SELECT saldo FROM v_article_stock_global WHERE article_id = ${articleId}`;
+      if (!article)
+        throw new BadRequestException(`Artículo ${articleIdStr} no existe`);
+      if (Number(article.status) !== 1)
+        throw new BadRequestException(
+          `Artículo "${article.description ?? articleIdStr}" no disponible (status inactivo)`,
+        );
+      if ((article as any).venta !== true)
+        throw new BadRequestException(
+          `Artículo "${article.description ?? articleIdStr}" no disponible para venta`,
+        );
+      if ((article as any).habilitado_web !== true)
+        throw new BadRequestException(
+          `Artículo "${article.description ?? articleIdStr}" no habilitado para web`,
+        );
+      const stockRows: any[] = await this.prisma
+        .$queryRaw`SELECT saldo FROM v_article_stock_global WHERE article_id = ${articleId}`;
       const saldo = stockRows[0] ? Number(stockRows[0].saldo) : 0;
-      if (saldo <= 0) throw new BadRequestException(`Artículo "${article.description ?? articleIdStr}" sin stock`);
-      if (totalQty > saldo) throw new BadRequestException(`Stock insuficiente para "${article.description ?? articleIdStr}". Solicitado: ${totalQty}, disponible: ${saldo}`);
+      if (saldo <= 0)
+        throw new BadRequestException(
+          `Artículo "${article.description ?? articleIdStr}" sin stock`,
+        );
+      if (totalQty > saldo)
+        throw new BadRequestException(
+          `Stock insuficiente para "${article.description ?? articleIdStr}". Solicitado: ${totalQty}, disponible: ${saldo}`,
+        );
     }
 
     return this.prisma
@@ -98,8 +126,9 @@ export class OrdersService {
             client_id: clientId,
             document_type_id: createOrderDto.document_type_id,
             document_number: null, // se actualiza después de validar
-            document_type: null,   // se actualiza después de validar
+            document_type: null, // se actualiza después de validar
             status: 'NUEVO',
+            payment_method_id: createOrderDto.payment_method_id,
             total: totales,
             terms: createOrderDto.terms,
           },
@@ -110,6 +139,7 @@ export class OrdersService {
         });
 
         if (orders?.clients?.document_number == '') {
+          throw new UnauthorizedException('Debes tener registro de dni');
           throw new UnauthorizedException('Debes tener registro de dni');
         }
 
@@ -144,7 +174,12 @@ export class OrdersService {
         const paymentMethod = await this.prisma.payment_methods.findUnique({
           where: { id: Number(createOrderDto.payment_method_id) },
         });
-        const surchargePercent = Number(paymentMethod?.surcharge_percent ?? 0);
+        const isCardPayment =
+          paymentMethod?.description?.toLowerCase().includes('tarjeta') ||
+          paymentMethod?.abbreviation?.toLowerCase().includes('tarjeta');
+        const surchargePercent = isCardPayment
+          ? Number(paymentMethod?.surcharge_percent ?? 0)
+          : 0;
 
         const item_irderns = await Promise.all(
           createOrderDto.items.map(async (item: any) => {
@@ -154,22 +189,31 @@ export class OrdersService {
               },
             });
             // Doble chequeo dentro de transacción por carrera: status/venta/habilitado_web
-            if (!article || Number((article as any).status) !== 1 || (article as any).venta !== true || (article as any).habilitado_web !== true) {
-              throw new BadRequestException(`Artículo ${item.article_id} no disponible para venta web`);
+            if (
+              !article ||
+              Number((article as any).status) !== 1 ||
+              (article as any).venta !== true ||
+              (article as any).habilitado_web !== true
+            ) {
+              throw new BadRequestException(
+                `Artículo ${item.article_id} no disponible para venta web`,
+              );
             }
             const unit_price = article?.public_price;
             const unitPriceNum = Number(unit_price);
-            const surcharge = surchargePercent > 0 ? unitPriceNum * (surchargePercent / 100) : 0;
+            const surcharge =
+              surchargePercent > 0
+                ? unitPriceNum * (surchargePercent / 100)
+                : 0;
             const priceWithSurcharge = unitPriceNum + surcharge;
             const subtotal = priceWithSurcharge * Number(item.quantity);
-
-
 
             return tx.order_items.create({
               data: {
                 quantity: item.quantity,
-                unit_price: surchargePercent > 0 ? priceWithSurcharge : unit_price || 0,
-                subtotal: subtotal, 
+                unit_price:
+                  surchargePercent > 0 ? priceWithSurcharge : unit_price || 0,
+                subtotal: subtotal,
                 orders: {
                   connect: { id: orders.id },
                 },
@@ -191,39 +235,43 @@ export class OrdersService {
               where: { id: item.article_id },
               select: { currency_type_id: true },
             });
-            const isSoles = String(article?.currency_type_id) === '1';
             return {
               ...item,
-              unit_price: isSoles
-                ? Number(item.unit_price)
-                : Number(item.unit_price) * dollarRate,
-              subtotal: isSoles
-                ? Number(item.subtotal)
-                : Number(item.subtotal) * dollarRate,
+              unit_price: Number(
+                this.toSoles(
+                  item.unit_price,
+                  article?.currency_type_id,
+                  dollarRate,
+                ).toFixed(2),
+              ),
+              subtotal: Number(
+                this.toSoles(
+                  item.subtotal,
+                  article?.currency_type_id,
+                  dollarRate,
+                ).toFixed(2),
+              ),
             };
           }),
         );
 
         const totalSoles = itemsEnSoles.reduce(
-          (sum, item) => sum + item.subtotal,
+          (sum, item) => sum + Number(item.subtotal.toFixed(2)),
           0,
         );
 
+        const {
+          clients: { id, ...todo },
+          ...ordenSinEsosCampos
+        } = orders;
         return {
-          orders: { 
-            ...orders
-            // clients:{
-            //   name:orders.clients.names,
-            //   lastnames:orders.clients.lastnames,
-            //   email:orders.clients.email,
-            //   phone: orders.clients.phone,
-            //   document_type: orders.clients.document_type,
-            //   document_number:orders.clients.document_number,
-            //   role:orders.clients.role,
-            //   ruc:orders.clients.ruc_number,
-            //   id: orders.clients.id
-            // }
-            , total: totalSoles, item_irderns: itemsEnSoles },
+          orders: {
+            ...ordenSinEsosCampos,
+            clients: { id },
+            total: Number(totalSoles.toFixed(2)),
+            item_irderns: itemsEnSoles,
+            surcharge_percent: surchargePercent,
+          },
         };
       })
       .then(async (result) => {
@@ -252,7 +300,12 @@ export class OrdersService {
     const paymentMethod = await this.prisma.payment_methods.findUnique({
       where: { id: Number(createOrderDto.payment_method_id) },
     });
-    const surchargePercent = Number(paymentMethod?.surcharge_percent ?? 0);
+    const isCardPayment =
+      paymentMethod?.description?.toLowerCase().includes('tarjeta') ||
+      paymentMethod?.abbreviation?.toLowerCase().includes('tarjeta');
+    const surchargePercent = isCardPayment
+      ? Number(paymentMethod?.surcharge_percent ?? 0)
+      : 0;
     let totales = 0;
 
     for (const item of createOrderDto.items) {
@@ -270,7 +323,8 @@ export class OrdersService {
         consulta?.currency_type_id,
         dollarRate,
       );
-      const surcharge = surchargePercent > 0 ? unit_price * (surchargePercent / 100) : 0;
+      const surcharge =
+        surchargePercent > 0 ? unit_price * (surchargePercent / 100) : 0;
       const priceWithSurcharge = unit_price + surcharge;
       const subtotal = priceWithSurcharge * Number(item.quantity);
 
@@ -300,7 +354,8 @@ export class OrdersService {
           total: Number(order.total),
           status: order.status ?? 'NUEVO',
           items_count: order.item_irderns?.length ?? null,
-          created_at: order.created_at?.toISOString?.() ?? order.created_at ?? null,
+          created_at:
+            order.created_at?.toISOString?.() ?? order.created_at ?? null,
         },
         {
           headers: {
@@ -365,26 +420,28 @@ export class OrdersService {
         o.total,
         o.status,
         o.payment_method_id,
+        p.surcharge_percent,
         c.id AS client_id,
         c.names AS client_name,
         o.created_at,
 
         JSON_ARRAYAGG(
-          JSON_OBJECT(
-            'id', oi.id,
-            'article_id', oi.article_id,
-            'quantity', oi.quantity,
-            'unit_price', oi.unit_price,
-            'subtotal', oi.subtotal,
-            'currency_type_id', a.currency_type_id,
-            'article_description', a.description
-          )
+JSON_OBJECT(
+          'id', oi.id,
+          'article_id', oi.article_id,
+          'quantity', oi.quantity,
+          'unit_price', oi.unit_price,
+          'subtotal', oi.subtotal,
+          'currency_type_id', a.currency_type_id,
+          'article_description', a.description
+        )
         ) AS items
 
       FROM orders o
       LEFT JOIN order_items oi ON oi.order_id = o.id
       LEFT JOIN articles a ON a.id = oi.article_id
       LEFT JOIN clients c ON c.id = o.client_id
+      LEFT JOIN payment_methods p ON p.id = o.payment_method_id
 
       ${whereSql}
 
@@ -453,6 +510,9 @@ export class OrdersService {
         hasNextPage: page < Math.ceil(total / limit),
         hasPrevPage: page > 1,
       },
+      // Incluir campos de payment_method al nivel de la orden
+      payment_method_id: data.length > 0 ? data[0].payment_method_id : null,
+      surcharge_percent: data.length > 0 ? data[0].surcharge_percent : null,
     };
   }
 
@@ -474,19 +534,21 @@ export class OrdersService {
 
   async findOne(id: number, userId?: number | string, isAdmin = false) {
     const respuesta = await this.prisma.$queryRaw<any[]>`
- SELECT
+  SELECT
    o.id,
    o.client_id,
    c.names AS client_names,
    c.lastnames AS client_lastnames,
    o.total,
    o.status,
-   o.created_at
-
+   o.created_at,
+   o.payment_method_id,
+   p.surcharge_percent
  FROM orders o
  LEFT JOIN clients c ON c.id = o.client_id
  LEFT JOIN order_items oi ON oi.order_id = o.id
  LEFT JOIN articles a ON a.id = oi.article_id
+ LEFT JOIN payment_methods p ON p.id = o.payment_method_id
  WHERE o.id = ${id}
  GROUP BY o.id;
    `;
@@ -504,12 +566,14 @@ export class OrdersService {
       o.client_id,
       o.total,
       o.status,
+      o.payment_method_id,
+      p.surcharge_percent,
       c.id AS client_id,
       c.names AS client_name,
       o.created_at,
 
       JSON_ARRAYAGG(
-        JSON_OBJECT(
+JSON_OBJECT(
           'id', oi.id,
           'article_id', oi.article_id,
           'quantity', oi.quantity,
@@ -524,6 +588,7 @@ export class OrdersService {
     LEFT JOIN order_items oi ON oi.order_id = o.id
     LEFT JOIN articles a ON a.id = oi.article_id
     LEFT JOIN clients c ON c.id = o.client_id
+    LEFT JOIN payment_methods p ON p.id = o.payment_method_id
 
     WHERE o.id = ${id}
 
@@ -643,7 +708,11 @@ export class OrdersService {
       orderBy: { date: 'desc' },
       select: { parallel_rate: true },
     });
-    const dollarRate = exchangeRate ? (Number(exchangeRate.parallel_rate) || Number(exchangeRate.parallel_rate) || 0) : 0;
+    const dollarRate = exchangeRate
+      ? Number(exchangeRate.parallel_rate) ||
+        Number(exchangeRate.parallel_rate) ||
+        0
+      : 0;
     const toSoles = (value: unknown, currencyTypeId: unknown) => {
       const amount = Number(value) || 0;
       return String(currencyTypeId) === '2' && dollarRate > 0

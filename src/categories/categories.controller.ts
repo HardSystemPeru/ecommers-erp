@@ -117,10 +117,10 @@ export class CategoriesController {
   remove(@Param('id') id: string) {
     return this.categoriesService.remove(id);
   }
-  
+
   @Get('filtrar-subcategories/:id')
   filterSubcategories(@Param('id') id: string) {
     return this.categoriesService.filterSubcategories(id);
   }
- z
+  z;
 }

@@ -24,7 +24,8 @@ function getClientIp(req: Request): string {
 /** Normaliza la cuenta objetivo (email/username) para el seguimiento por cuenta. */
 function getAccount(body: unknown): string | undefined {
   if (!body || typeof body !== 'object') return undefined;
-  const raw = (body as Record<string, unknown>).email ??
+  const raw =
+    (body as Record<string, unknown>).email ??
     (body as Record<string, unknown>).username ??
     (body as Record<string, unknown>).document_number;
   if (typeof raw !== 'string' || !raw) return undefined;
@@ -65,7 +66,10 @@ export class BruteForceInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap(() => this.bf.recordSuccess(ip, account)),
       catchError((err) => {
-        if (err instanceof HttpException && err.getStatus() === HttpStatus.UNAUTHORIZED) {
+        if (
+          err instanceof HttpException &&
+          err.getStatus() === HttpStatus.UNAUTHORIZED
+        ) {
           this.bf.recordFailure(ip, account);
         }
         return throwError(() => err);

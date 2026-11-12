@@ -34,9 +34,15 @@ export class BruteForceService {
 
   constructor(private readonly config: ConfigService) {
     this.maxAttempts = Number(this.config.get('BRUTEFORCE_MAX_ATTEMPTS') ?? 5);
-    this.windowMs = Number(this.config.get('BRUTEFORCE_WINDOW_MS') ?? 15 * 60 * 1000);
-    this.blockMs = Number(this.config.get('BRUTEFORCE_BLOCK_MS') ?? 15 * 60 * 1000);
-    this.maxBlockMs = Number(this.config.get('BRUTEFORCE_MAX_BLOCK_MS') ?? 24 * 60 * 60 * 1000);
+    this.windowMs = Number(
+      this.config.get('BRUTEFORCE_WINDOW_MS') ?? 15 * 60 * 1000,
+    );
+    this.blockMs = Number(
+      this.config.get('BRUTEFORCE_BLOCK_MS') ?? 15 * 60 * 1000,
+    );
+    this.maxBlockMs = Number(
+      this.config.get('BRUTEFORCE_MAX_BLOCK_MS') ?? 24 * 60 * 60 * 1000,
+    );
 
     // Elimina registros expirados para evitar fuga de memoria
     this.sweepInterval = setInterval(() => this.sweep(), 5 * 60 * 1000);
@@ -48,15 +54,24 @@ export class BruteForceService {
   }
 
   /** Devuelve si IP o cuenta están bloqueadas y cuánto falta (segundos). */
-  isBlocked(ip: string, account?: string): { blocked: boolean; retryAfter: number } {
+  isBlocked(
+    ip: string,
+    account?: string,
+  ): { blocked: boolean; retryAfter: number } {
     const ipRec = this.ipStore.get(ip);
     if (ipRec && ipRec.blockedUntil > Date.now()) {
-      return { blocked: true, retryAfter: Math.ceil((ipRec.blockedUntil - Date.now()) / 1000) };
+      return {
+        blocked: true,
+        retryAfter: Math.ceil((ipRec.blockedUntil - Date.now()) / 1000),
+      };
     }
     if (account) {
       const accRec = this.accountStore.get(account);
       if (accRec && accRec.blockedUntil > Date.now()) {
-        return { blocked: true, retryAfter: Math.ceil((accRec.blockedUntil - Date.now()) / 1000) };
+        return {
+          blocked: true,
+          retryAfter: Math.ceil((accRec.blockedUntil - Date.now()) / 1000),
+        };
       }
     }
     return { blocked: false, retryAfter: 0 };
@@ -90,7 +105,10 @@ export class BruteForceService {
 
     if (rec.count >= this.maxAttempts) {
       rec.blockCount += 1;
-      const duration = Math.min(this.blockMs * Math.pow(2, rec.blockCount - 1), this.maxBlockMs);
+      const duration = Math.min(
+        this.blockMs * Math.pow(2, rec.blockCount - 1),
+        this.maxBlockMs,
+      );
       rec.blockedUntil = now + duration;
       this.logger.warn(
         `Brute-force lockout -> key="${key}" attempts=${rec.count} blockMs=${duration}`,
@@ -103,10 +121,12 @@ export class BruteForceService {
   private sweep() {
     const now = Date.now();
     for (const [k, v] of this.ipStore) {
-      if (v.blockedUntil < now && now - v.firstAt > this.windowMs) this.ipStore.delete(k);
+      if (v.blockedUntil < now && now - v.firstAt > this.windowMs)
+        this.ipStore.delete(k);
     }
     for (const [k, v] of this.accountStore) {
-      if (v.blockedUntil < now && now - v.firstAt > this.windowMs) this.accountStore.delete(k);
+      if (v.blockedUntil < now && now - v.firstAt > this.windowMs)
+        this.accountStore.delete(k);
     }
   }
 }

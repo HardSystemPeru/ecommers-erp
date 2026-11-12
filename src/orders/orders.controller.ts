@@ -32,11 +32,14 @@ export class OrdersController {
   @UseGuards(AuthGuard('jwt'))
   @Post()
   create(@Body() createOrderDto: CreateOrderDto, @GetClient() user: any) {
-    
-        if (!user?.id || Number.isNaN(user?.id)) {
-            throw new UnauthorizedException('No se pudo determinar el cliente');
-           }
-    return this.ordersService.create( createOrderDto, user?.id, user?.role === 'admin',);
+    if (!user?.id || Number.isNaN(user?.id)) {
+      throw new UnauthorizedException('No se pudo determinar el cliente');
+    }
+    return this.ordersService.create(
+      createOrderDto,
+      user?.id,
+      user?.role === 'admin',
+    );
   }
 
   @UseGuards(JwtAuthGuard)

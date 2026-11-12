@@ -10,4 +10,4 @@ import { Chat } from './chat.service';
   controllers: [ChatbootController],
   providers: [ChatbootService, Chat],
 })
-export class ChatbootModule { }
+export class ChatbootModule {}

@@ -14,9 +14,16 @@ const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
 @Injectable()
 export class StorageService {
-  private readonly uploadDir = path.join(process.cwd(), 'storage', 'complaints');
+  private readonly uploadDir = path.join(
+    process.cwd(),
+    'storage',
+    'complaints',
+  );
 
-  async saveFile(file: Express.Multer.File, kind: 'evidence' | 'signature'): Promise<string> {
+  async saveFile(
+    file: Express.Multer.File,
+    kind: 'evidence' | 'signature',
+  ): Promise<string> {
     if (file.size > MAX_SIZE) {
       throw new BadRequestException(`${kind} exceeds 5MB limit`);
     }

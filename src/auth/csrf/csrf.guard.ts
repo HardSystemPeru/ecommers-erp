@@ -1,4 +1,9 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 
@@ -37,8 +42,8 @@ export class CsrfGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<Request>();
     if (this.safeMethods.has(req.method)) return true;
 
-    const origin = req.headers.origin as string | undefined;
-    const referer = req.headers.referer as string | undefined;
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
 
     // Cliente no navegador (server-to-server) sin Origin/Referer: se permite.
     if (!origin && !referer) return true;
@@ -49,7 +54,9 @@ export class CsrfGuard implements CanActivate {
       const url = this.safeUrl(origin);
       if (!url) throw new ForbiddenException('Origen no válido');
       if (this.isAllowed(url, host)) return true;
-      throw new ForbiddenException('Solicitud bloqueada por política CSRF (Origin no permitido)');
+      throw new ForbiddenException(
+        'Solicitud bloqueada por política CSRF (Origin no permitido)',
+      );
     }
 
     if (referer) {

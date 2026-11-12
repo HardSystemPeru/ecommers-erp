@@ -23,7 +23,9 @@ export class ClientsController {
   private assertOwnershipOrAdmin(user: any, resourceId: string | number) {
     if (user.role === 'admin') return;
     if (String(user.id) === String(resourceId)) return;
-    throw new ForbiddenException('No tienes permiso para acceder a este recurso');
+    throw new ForbiddenException(
+      'No tienes permiso para acceder a este recurso',
+    );
   }
 
   @Patch('sunat')

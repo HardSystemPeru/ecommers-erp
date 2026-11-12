@@ -4,8 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
 @Injectable()
-export class MailService implements OnModuleInit{
-   private readonly logger = new Logger(MailService.name);
+export class MailService implements OnModuleInit {
+  private readonly logger = new Logger(MailService.name);
   private transporter: nodemailer.Transporter;
 
   constructor(private config: ConfigService) {
@@ -19,7 +19,7 @@ export class MailService implements OnModuleInit{
       },
     });
   }
-    async onModuleInit() {
+  async onModuleInit() {
     try {
       await this.transporter.verify();
       this.logger.log('Conexión SMTP verificada correctamente ✅');
@@ -28,12 +28,16 @@ export class MailService implements OnModuleInit{
     }
   }
 
-  async sendComplaintConfirmation(to: string, name: string, numberComplaint: string) {
+  async sendComplaintConfirmation(
+    to: string,
+    name: string,
+    numberComplaint: string,
+  ) {
     await this.transporter.sendMail({
       from: this.config.get('MAIL_FROM'),
       to,
       subject: `Confirmación de reclamo N° ${numberComplaint}`,
-       html: `
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
         <h2 style="text-align: center; color: #333;">Reclamo registrado con éxito</h2>
         <p>Hola ${name},</p>
@@ -49,7 +53,7 @@ export class MailService implements OnModuleInit{
         <p style="font-size: 12px; color: #999; text-align: center;">Este es un mensaje automático, por favor no respondas a este correo.</p>
       </div>
     `,
-       });
+    });
   }
 
   async sendInternalNotification(numberComplaint: string) {

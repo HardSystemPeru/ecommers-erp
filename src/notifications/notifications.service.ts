@@ -13,7 +13,11 @@ export class NotificationsService {
     private readonly config: ConfigService,
   ) {}
 
-  async createNew(orderId: bigint, message?: string, tx?: Prisma.TransactionClient) {
+  async createNew(
+    orderId: bigint,
+    message?: string,
+    tx?: Prisma.TransactionClient,
+  ) {
     const client = tx ?? this.prisma;
 
     return client.notifications.create({
@@ -56,7 +60,9 @@ export class NotificationsService {
         type: 'nuevo',
       });
     } catch (error) {
-      this.logger.warn(`No se pudo emitir a Reverb: ${(error as Error).message}`);
+      this.logger.warn(
+        `No se pudo emitir a Reverb: ${(error as Error).message}`,
+      );
     }
   }
 }

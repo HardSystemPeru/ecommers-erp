@@ -15,31 +15,39 @@ export class ArticleMapper {
     itemType: string = 'article',
     subCategory: any = null,
   ) {
-    const publicPrice = article.public_price ? Number(article.public_price) : null;
-    const purchasePrice = article.purchase_price ? Number(article.purchase_price) : null;
-    const distributorPrice = article.distributor_price ? Number(article.distributor_price) : null;
-    const authorizedPrice = article.authorized_price ? Number(article.authorized_price) : null;
+    const publicPrice = article.public_price
+      ? Number(article.public_price)
+      : null;
+    const purchasePrice = article.purchase_price
+      ? Number(article.purchase_price)
+      : null;
+    const distributorPrice = article.distributor_price
+      ? Number(article.distributor_price)
+      : null;
+    const authorizedPrice = article.authorized_price
+      ? Number(article.authorized_price)
+      : null;
 
     const currencyTypeStr = article.currency_type_id?.toString();
 
     // Calculations
     const precio_public_soles = publicPrice
       ? Number(
-          (
-            currencyTypeStr === '1'
-              ? publicPrice
-              : publicPrice * dollarRate
-          ).toFixed(2)
+          (currencyTypeStr === '1'
+            ? publicPrice
+            : publicPrice * dollarRate
+          ).toFixed(2),
         )
       : null;
 
     const precio_public_dolares = publicPrice
       ? Number(
-          (
-            currencyTypeStr === '2'
-              ? publicPrice
-              : dollarRate > 0 ? publicPrice / dollarRate : 0
-          ).toFixed(2)
+          (currencyTypeStr === '2'
+            ? publicPrice
+            : dollarRate > 0
+              ? publicPrice / dollarRate
+              : 0
+          ).toFixed(2),
         )
       : null;
 
@@ -48,36 +56,37 @@ export class ArticleMapper {
     const precio_porcentaje = publicPrice
       ? Number(
           (
-            (
-              currencyTypeStr === '1'
-                ? publicPrice
-                : publicPrice * dollarRate
-            ) * (1 - offerPercent / 100)
-          ).toFixed(2)
+            (currencyTypeStr === '1' ? publicPrice : publicPrice * dollarRate) *
+            (1 - offerPercent / 100)
+          ).toFixed(2),
         )
       : null;
 
     const precio_porcentaje_dolares = publicPrice
       ? Number(
           (
-            (
-              currencyTypeStr === '2'
-                ? publicPrice
-                : dollarRate > 0 ? publicPrice / dollarRate : 0
-            ) * (1 - offerPercent / 100)
-          ).toFixed(2)
+            (currencyTypeStr === '2'
+              ? publicPrice
+              : dollarRate > 0
+                ? publicPrice / dollarRate
+                : 0) *
+            (1 - offerPercent / 100)
+          ).toFixed(2),
         )
       : null;
 
     const totalReviews = article.reviews?.length || 0;
-    const averageRating = totalReviews > 0
-      ? parseFloat(
-          (
-            article.reviews.reduce((sum: number, r: any) => sum + r.rating, 0) /
-            totalReviews
-          ).toFixed(1)
-        )
-      : 0;
+    const averageRating =
+      totalReviews > 0
+        ? parseFloat(
+            (
+              article.reviews.reduce(
+                (sum: number, r: any) => sum + r.rating,
+                0,
+              ) / totalReviews
+            ).toFixed(1),
+          )
+        : 0;
 
     const name = article.description || '';
     const slug = `${slugify(name.replace(/\./g, '-'), {
@@ -99,7 +108,7 @@ export class ArticleMapper {
       last_supplier: article.last_supplier?.toString(),
       last_entry_guide: article.last_entry_guide?.toString(),
       article_type_id: article.article_type_id?.toString(),
-      
+
       precio_public_soles,
       precio_public_dolares,
       precio_porcentaje,
@@ -157,21 +166,21 @@ export class ArticleMapper {
 
       const public_price_soles = publicPrice
         ? parseFloat(
-            (
-              currencyTypeStr === '1'
-                ? publicPrice
-                : publicPrice * dollarRate
-            ).toFixed(2)
+            (currencyTypeStr === '1'
+              ? publicPrice
+              : publicPrice * dollarRate
+            ).toFixed(2),
           )
         : null;
 
       const public_price_dolares = publicPrice
         ? parseFloat(
-            (
-              currencyTypeStr === '2'
-                ? publicPrice
-                : dollarRate > 0 ? publicPrice / dollarRate : 0
-            ).toFixed(2)
+            (currencyTypeStr === '2'
+              ? publicPrice
+              : dollarRate > 0
+                ? publicPrice / dollarRate
+                : 0
+            ).toFixed(2),
           )
         : null;
 
@@ -188,7 +197,10 @@ export class ArticleMapper {
         public_price: publicPrice,
         public_price_soles,
         public_price_dolares,
-        precio_final: detailArticle.precio_final != null ? Number(detailArticle.precio_final) : null,
+        precio_final:
+          detailArticle.precio_final != null
+            ? Number(detailArticle.precio_final)
+            : null,
         has_offer: detailArticle.has_offer ? 1 : 0,
         offer_price_percent: Number(detailArticle.offer_price_percent || 0),
         effective_price: line.effective_price,
@@ -206,12 +218,14 @@ export class ArticleMapper {
               name: detailArticle.brands.name,
             }
           : null,
-        article_images: (detailArticle.article_images || []).map((img: any) => ({
-          id: img.id.toString(),
-          url: this.formatImageUrl(img.url, baseUrl),
-          position: img.position,
-          is_main: img.is_main,
-        })),
+        article_images: (detailArticle.article_images || []).map(
+          (img: any) => ({
+            id: img.id.toString(),
+            url: this.formatImageUrl(img.url, baseUrl),
+            position: img.position,
+            is_main: img.is_main,
+          }),
+        ),
       };
     });
     // Total = suma de precios efectivos, redondeo único al final.

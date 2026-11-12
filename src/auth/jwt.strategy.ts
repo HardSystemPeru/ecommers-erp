@@ -20,12 +20,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       secretOrKey: configService.get<string>('JWT_SECRET')!,
     });
   }
- 
+
   async validate(payload: any) {
-    if (payload.jti && (await this.tokenRevocationService.isRevoked(payload.jti))) {
+    if (
+      payload.jti &&
+      (await this.tokenRevocationService.isRevoked(payload.jti))
+    ) {
       throw new UnauthorizedException('Sesión revocada');
     }
- 
+
     if (payload.role === 'admin') {
       const admin = await this.clientsService.findById(Number(payload.sub));
 
@@ -47,7 +50,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!client) {
       throw new UnauthorizedException('Cliente no encontrado');
     }
- 
+
     return {
       id: client.id.toString(),
       email: client.email,

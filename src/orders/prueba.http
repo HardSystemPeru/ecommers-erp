@@ -59,3 +59,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3IiwiZW1ha
 ### 5️⃣ Listar todas las órdenes
 GET http://localhost:3009/api/orders
 Authorization: Bearer TU_TOKEN_AQUI
+
+### 5 Listar todas las órdenes
+GET http://localhost:3009/api/orders/detalle/20
+Authorization: Bearer TU_TOKEN_AQUI

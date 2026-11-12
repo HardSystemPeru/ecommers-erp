@@ -1,14 +1,19 @@
-import { Inject, Injectable, OnModuleInit } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
-import { RedisClientType } from "redis";
-import { PrismaService } from "src/prisma/prisma.service";
+import { RedisClientType } from 'redis';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { randomUUID, createHash } from 'crypto';
-import { normalizeToken as normalizeWithDict, getVariants } from './plural-variants';
+import {
+  normalizeToken as normalizeWithDict,
+  getVariants,
+} from './plural-variants';
 
 // Intención de oferta: "oferta(s), descuento(s), promoción, promo, barato(s), remate, liquidación"
-const OFERTA_RE = /\b(ofertas?|descuentos?|promociones?|promos?|baratos?|remates?|liquidaciones?)\b/i;
-const OFERTA_RE_G = /\b(ofertas?|descuentos?|promociones?|promos?|baratos?|remates?|liquidaciones?)\b/gi;
+const OFERTA_RE =
+  /\b(ofertas?|descuentos?|promociones?|promos?|baratos?|remates?|liquidaciones?)\b/i;
+const OFERTA_RE_G =
+  /\b(ofertas?|descuentos?|promociones?|promos?|baratos?|remates?|liquidaciones?)\b/gi;
 // Tope de ofertas por página (el resto del chat usa 12)
 const OFFER_LIMIT = 10;
 
@@ -29,14 +34,11 @@ const COMPUTER_COMBO_TOKENS = new Set([
 
 @Injectable()
 export class Chat implements OnModuleInit {
-  
-    
-
   constructor(
     @Inject('REDIS_CLIENT')
     private redisClient: RedisClientType,
     private prisma: PrismaService,
-    private configService:ConfigService
+    private configService: ConfigService,
   ) {}
 
   async onModuleInit() {
@@ -49,7 +51,8 @@ export class Chat implements OnModuleInit {
   }
 
   async construirVocabulario() {
-    const filas: any[] = await this.prisma.$queryRaw`SELECT DISTINCT description FROM articles WHERE status=1 AND venta=1 AND habilitado_web=1 AND slug IS NOT NULL AND id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)`;
+    const filas: any[] = await this.prisma
+      .$queryRaw`SELECT DISTINCT description FROM articles WHERE status=1 AND venta=1 AND habilitado_web=1 AND slug IS NOT NULL AND id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)`;
 
     const vocabulario = new Set<string>();
 
@@ -76,20 +79,24 @@ export class Chat implements OnModuleInit {
   async filtrarTokensValidos(tokens: string[]): Promise<string[]> {
     if (tokens.length === 0) return [];
 
-    const tokensNormalizados = tokens.map(t => this.normalizarToken(t));
+    const tokensNormalizados = tokens.map((t) => this.normalizarToken(t));
 
-    const resultados = await this.redisClient.smIsMember( 'vocabulario:articulos',tokensNormalizados,);
+    const resultados = await this.redisClient.smIsMember(
+      'vocabulario:articulos',
+      tokensNormalizados,
+    );
 
-    return tokensNormalizados.filter((_, i) => resultados[i])}
+    return tokensNormalizados.filter((_, i) => resultados[i]);
+  }
 
   async buscarArticulos(queryOriginal: string) {
-
     const limit = 12;
 
     // Antispam: la misma consulta repetida más de 10 veces se bloquea 10 minutos
     if (await this.verificarBloqueoRepeticion(queryOriginal)) {
       return {
-        message: 'Has repetido muchas veces la misma consulta. Inténtalo de nuevo en unos minutos.',
+        message:
+          'Has repetido muchas veces la misma consulta. Inténtalo de nuevo en unos minutos.',
         type: 'product_list',
         data: [],
         meta: {
@@ -100,7 +107,9 @@ export class Chat implements OnModuleInit {
         },
       };
     }
-    const tipo_de_cambio: any = await this.prisma.exchange_rates.findFirst({ orderBy: { date: 'desc' } });
+    const tipo_de_cambio: any = await this.prisma.exchange_rates.findFirst({
+      orderBy: { date: 'desc' },
+    });
     const rate = Number(tipo_de_cambio?.parallel_rate) || 0;
     const appURL = this.configService.get<string>('APP_URL');
 
@@ -112,7 +121,11 @@ export class Chat implements OnModuleInit {
     const pideOferta = OFERTA_RE.test(queryOriginal);
     // Las palabras de oferta son intención, no términos de búsqueda
     const texto = queryOriginal.replace(OFERTA_RE_G, ' ');
-    const tokens = texto.toLowerCase().split(/\s+/).filter(t => t.length > 2).map(t => this.normalizarToken(t));
+    const tokens = texto
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 2)
+      .map((t) => this.normalizarToken(t));
 
     const tokensValidos = await this.filtrarTokensValidos(tokens);
     const tokensTexto = tokensValidos.join(' ');
@@ -121,17 +134,30 @@ export class Chat implements OnModuleInit {
     if (tokensValidos.length === 0 && pideOferta) {
       const cachePayload = { ofertaPura: true };
       const { rows, total } = await this.ejecutarBusqueda({
-        booleanQuery: '', tokensTexto: '', queryOriginal: '',
-        pideOferta: true, ofertaPura: true, comboLikes: [],
-        limit: OFFER_LIMIT, offset: 0, rate,
+        booleanQuery: '',
+        tokensTexto: '',
+        queryOriginal: '',
+        pideOferta: true,
+        ofertaPura: true,
+        comboLikes: [],
+        limit: OFFER_LIMIT,
+        offset: 0,
+        rate,
       });
       const hasMore = total > rows.length;
       const queryId = hasMore ? randomUUID() : null;
       if (queryId) {
-        await this.redisClient.set(`chat:query:${queryId}`, JSON.stringify(cachePayload), { EX: 60 * 10 });
+        await this.redisClient.set(
+          `chat:query:${queryId}`,
+          JSON.stringify(cachePayload),
+          { EX: 60 * 10 },
+        );
       }
       return {
-        message: rows.length === 0 ? 'Por ahora no tenemos ofertas disponibles' : 'Aqui tienes las ofertas ',
+        message:
+          rows.length === 0
+            ? 'Por ahora no tenemos ofertas disponibles'
+            : 'Aqui tienes las ofertas ',
         type: 'product_list',
         data: this.mapPrecios(rows, rate, appURL),
         meta: { total, hasMore, nextCursor: null, queryId },
@@ -145,92 +171,148 @@ export class Chat implements OnModuleInit {
     const esBusquedaComputadora =
       comboLikesEarly.some((w) => COMPUTER_COMBO_TOKENS.has(w)) ||
       tokens.some((t) => COMPUTER_COMBO_TOKENS.has(t));
-    if (tokensValidos.length === 0 && !esBusquedaComputadora && comboLikesEarly.length === 0) {
-         return {
-         message: 'Lo siento, no puedo resolver esa duda',
-         type: 'product_list',
-         data: [],
-         meta: {
-               total: 0,
-               hasMore: false,
-               nextCursor: null,
-               queryId: null,
-     },
-   };
-  }
+    if (
+      tokensValidos.length === 0 &&
+      !esBusquedaComputadora &&
+      comboLikesEarly.length === 0
+    ) {
+      return {
+        message: 'Lo siento, no puedo resolver esa duda',
+        type: 'product_list',
+        data: [],
+        meta: {
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+          queryId: null,
+        },
+      };
+    }
 
     if (tokensValidos.length === 0) {
       // Solo-combos: sin MATCH de artículos, solo LIKE (o todos si es "computadora").
       const booleanQueryEmpty = '';
       const comboLikes = comboLikesEarly;
-      const cachePayload = { booleanQuery: booleanQueryEmpty, tokensTexto: '', queryOriginal, pideOferta, comboLikes };
-      const { rows: dataOnlyCombos, total: totalOnlyCombos } = await this.ejecutarBusqueda({
-        booleanQuery: booleanQueryEmpty, tokensTexto: '', queryOriginal, pideOferta, ofertaPura: false, comboLikes,
-        limit, offset: 0, rate,
-      });
+      const cachePayload = {
+        booleanQuery: booleanQueryEmpty,
+        tokensTexto: '',
+        queryOriginal,
+        pideOferta,
+        comboLikes,
+      };
+      const { rows: dataOnlyCombos, total: totalOnlyCombos } =
+        await this.ejecutarBusqueda({
+          booleanQuery: booleanQueryEmpty,
+          tokensTexto: '',
+          queryOriginal,
+          pideOferta,
+          ofertaPura: false,
+          comboLikes,
+          limit,
+          offset: 0,
+          rate,
+        });
       const hasMoreCombos = totalOnlyCombos > dataOnlyCombos.length;
       const queryIdCombos = hasMoreCombos ? randomUUID() : null;
       if (queryIdCombos) {
-        await this.redisClient.set(`chat:query:${queryIdCombos}`, JSON.stringify(cachePayload), { EX: 60 * 10 });
+        await this.redisClient.set(
+          `chat:query:${queryIdCombos}`,
+          JSON.stringify(cachePayload),
+          { EX: 60 * 10 },
+        );
       }
       return {
-        message: dataOnlyCombos?.length === 0 ? 'Lo siento no hay producto disponible' : 'Aqui tienes los resultados ',
+        message:
+          dataOnlyCombos?.length === 0
+            ? 'Lo siento no hay producto disponible'
+            : 'Aqui tienes los resultados ',
         type: 'product_list',
         data: this.mapPrecios(dataOnlyCombos, rate, appURL),
-        meta: { total: totalOnlyCombos, hasMore: hasMoreCombos, nextCursor: null, queryId: queryIdCombos },
+        meta: {
+          total: totalOnlyCombos,
+          hasMore: hasMoreCombos,
+          nextCursor: null,
+          queryId: queryIdCombos,
+        },
       };
- }
+    }
 
-      // Grupos OR opcionales: cada concepto suma si coincide, pero ninguno excluye.
-      // Así un título largo pegado devuelve los más parecidos (ordenados por relevancia)
-      // en vez de vacío por exigir todos los términos a la vez.
-      const booleanQuery = tokensValidos
-        .map(valid => {
-          const variants = Array.from(new Set(getVariants(valid).map(v => v.toLowerCase().trim()).filter(v => v.length > 2))).slice(0, 6);
-          if (variants.length === 1) return `${variants[0]}*`;
-          return `(${variants.map(v => `${v}*`).join(' ')})`;
-        })
-        .join(' ');
-      const comboLikes = this.comboLikesDe(texto);
+    // Grupos OR opcionales: cada concepto suma si coincide, pero ninguno excluye.
+    // Así un título largo pegado devuelve los más parecidos (ordenados por relevancia)
+    // en vez de vacío por exigir todos los términos a la vez.
+    const booleanQuery = tokensValidos
+      .map((valid) => {
+        const variants = Array.from(
+          new Set(
+            getVariants(valid)
+              .map((v) => v.toLowerCase().trim())
+              .filter((v) => v.length > 2),
+          ),
+        ).slice(0, 6);
+        if (variants.length === 1) return `${variants[0]}*`;
+        return `(${variants.map((v) => `${v}*`).join(' ')})`;
+      })
+      .join(' ');
+    const comboLikes = this.comboLikesDe(texto);
 
-      const cachePayload = { booleanQuery, tokensTexto, queryOriginal, pideOferta, comboLikes };
-      const { rows: data, total } = await this.ejecutarBusqueda({
-        booleanQuery, tokensTexto, queryOriginal, pideOferta, ofertaPura: false, comboLikes,
-        limit, offset: 0, rate,
-      });
+    const cachePayload = {
+      booleanQuery,
+      tokensTexto,
+      queryOriginal,
+      pideOferta,
+      comboLikes,
+    };
+    const { rows: data, total } = await this.ejecutarBusqueda({
+      booleanQuery,
+      tokensTexto,
+      queryOriginal,
+      pideOferta,
+      ofertaPura: false,
+      comboLikes,
+      limit,
+      offset: 0,
+      rate,
+    });
 
-     const hasMore = total > data.length;
+    const hasMore = total > data.length;
 
     const queryId = hasMore ? randomUUID() : null;
 
-     if (queryId) {
-        await this.redisClient.set(`chat:query:${queryId}`, JSON.stringify(cachePayload),
+    if (queryId) {
+      await this.redisClient.set(
+        `chat:query:${queryId}`,
+        JSON.stringify(cachePayload),
         {
-           EX: 60 * 10,
+          EX: 60 * 10,
         },
-  );
-}
+      );
+    }
 
-     return {
-             message: data?.length === 0
-               ? (pideOferta ? 'No encontramos ofertas para esa búsqueda' : 'Lo siento no hay producto disponible')
-               : 'Aqui tienes los resultados ',
-             type: "product_list",
-             data: this.mapPrecios(data, rate, appURL),
-             meta:{
-              total,
-              hasMore,
-              nextCursor: null,
-               queryId
-              }
-            }
+    return {
+      message:
+        data?.length === 0
+          ? pideOferta
+            ? 'No encontramos ofertas para esa búsqueda'
+            : 'Lo siento no hay producto disponible'
+          : 'Aqui tienes los resultados ',
+      type: 'product_list',
+      data: this.mapPrecios(data, rate, appURL),
+      meta: {
+        total,
+        hasMore,
+        nextCursor: null,
+        queryId,
+      },
+    };
   }
 
   /**
    * Bloquea 10 minutos la consulta que se repite más de 10 veces.
    * Ventana deslizante de 10 min por hash del mensaje. Fail-open si Redis falla.
    */
-  private async verificarBloqueoRepeticion(queryOriginal: string): Promise<boolean> {
+  private async verificarBloqueoRepeticion(
+    queryOriginal: string,
+  ): Promise<boolean> {
     try {
       const texto = (queryOriginal || '').toLowerCase().trim();
       if (!texto) return false;
@@ -253,11 +335,37 @@ export class Chat implements OnModuleInit {
   /** Palabras sanitizadas para el LIKE de combos (build_pc_tabla no tiene FULLTEXT). */
   private comboLikesDe(texto: string): string[] {
     // Verbos de pedido que nunca están en nombres de combos y solo meterían ruido en el LIKE.
-    const filler = new Set(['traeme', 'traemé', 'tráeme', 'dame', 'muestrame', 'muéstrame', 'quiero', 'necesito', 'busco', 'tienes', 'tienen', 'hay', 'venden', 'para', 'con', 'que', 'una', 'unos', 'unas', 'los', 'las', 'del', 'por', 'favor']);
+    const filler = new Set([
+      'traeme',
+      'traemé',
+      'tráeme',
+      'dame',
+      'muestrame',
+      'muéstrame',
+      'quiero',
+      'necesito',
+      'busco',
+      'tienes',
+      'tienen',
+      'hay',
+      'venden',
+      'para',
+      'con',
+      'que',
+      'una',
+      'unos',
+      'unas',
+      'los',
+      'las',
+      'del',
+      'por',
+      'favor',
+    ]);
     const out = new Set<string>();
     for (const w of texto.toLowerCase().split(/\s+/)) {
       const limpio = w.replace(/[^a-z0-9áéíóúñü]/gi, '');
-      if (limpio.length >= 2 && !filler.has(limpio) && out.size < 8) out.add(limpio);
+      if (limpio.length >= 2 && !filler.has(limpio) && out.size < 8)
+        out.add(limpio);
     }
     return Array.from(out);
   }
@@ -270,9 +378,13 @@ export class Chat implements OnModuleInit {
       const { prioridadCombo, ...rest } = item || {};
       const out: any = {
         ...rest,
-        precio: esCombo ? Number(base.toFixed(2)) : Number((base * rate).toFixed(2)),
+        precio: esCombo
+          ? Number(base.toFixed(2))
+          : Number((base * rate).toFixed(2)),
         imagen: item?.imagen
-          ? (String(item.imagen).startsWith('http') ? item.imagen : (appURL || '') + item.imagen)
+          ? String(item.imagen).startsWith('http')
+            ? item.imagen
+            : (appURL || '') + item.imagen
           : null,
       };
       const pct = Number(item?.oferta_pct) || 0;
@@ -300,7 +412,9 @@ export class Chat implements OnModuleInit {
     rate: number;
   }): Promise<{ rows: any[]; total: number }> {
     const VIS = Prisma.sql`a.status=1 AND a.venta=1 AND a.habilitado_web=1 AND a.slug IS NOT NULL AND a.id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)`;
-    const ofertaFrag = o.pideOferta ? Prisma.sql`AND a.has_offer = 1` : Prisma.empty;
+    const ofertaFrag = o.pideOferta
+      ? Prisma.sql`AND a.has_offer = 1`
+      : Prisma.empty;
 
     if (o.ofertaPura) {
       const [rows, tot] = await Promise.all([
@@ -317,7 +431,7 @@ export class Chat implements OnModuleInit {
         this.prisma.$queryRaw(Prisma.sql`
           SELECT COUNT(*) AS total FROM articles a WHERE ${VIS} AND a.has_offer = 1`) as any as any[],
       ]);
-      return { rows, total: Number((tot as any[])[0]?.total ?? 0) };
+      return { rows, total: Number(tot[0]?.total ?? 0) };
     }
 
     const artSel = Prisma.sql`
@@ -343,25 +457,33 @@ export class Chat implements OnModuleInit {
     // LIKE '%computadora%' nunca coincidiría). También se expanden plurales:
     // "computadoras" hace match con "computadora" y viceversa.
     const normalizedLikes = o.comboLikes.map((l) => l.toLowerCase());
-    const esBusquedaComputadora = normalizedLikes.some((w) => COMPUTER_COMBO_TOKENS.has(w));
-    const conCombos = (o.comboLikes.length > 0 || esBusquedaComputadora) && !o.pideOferta;
-    const likeConds = o.comboLikes
-      .flatMap((l) => {
-        const variants = Array.from(
-          new Set(getVariants(l.toLowerCase()).map((v) => v.toLowerCase().trim()).filter((v) => v.length >= 2)),
-        ).slice(0, 6);
-        const terms = variants.length > 0 ? variants : [l];
-        return terms.map(
-          (t) => Prisma.sql`(b.name LIKE ${'%' + t + '%'} OR b.description LIKE ${'%' + t + '%'})`,
-        );
-      });
+    const esBusquedaComputadora = normalizedLikes.some((w) =>
+      COMPUTER_COMBO_TOKENS.has(w),
+    );
+    const conCombos =
+      (o.comboLikes.length > 0 || esBusquedaComputadora) && !o.pideOferta;
+    const likeConds = o.comboLikes.flatMap((l) => {
+      const variants = Array.from(
+        new Set(
+          getVariants(l.toLowerCase())
+            .map((v) => v.toLowerCase().trim())
+            .filter((v) => v.length >= 2),
+        ),
+      ).slice(0, 6);
+      const terms = variants.length > 0 ? variants : [l];
+      return terms.map(
+        (t) =>
+          Prisma.sql`(b.name LIKE ${'%' + t + '%'} OR b.description LIKE ${'%' + t + '%'})`,
+      );
+    });
     const comboWhereFrag = esBusquedaComputadora
       ? Prisma.sql`b.status = 1 AND b.slug IS NOT NULL`
       : Prisma.sql`b.status = 1 AND b.slug IS NOT NULL AND (${Prisma.join(likeConds, ' OR ')})`;
     // Si hay un combo llamado literalmente "computadora", debe salir primero:
     // '%computadora%' ya cubre singular+plural (computadoras contiene computadora).
     const prioridadComboFrag = Prisma.sql`CASE WHEN (b.name LIKE '%computadora%' OR b.description LIKE '%computadora%') THEN 3 WHEN (b.name LIKE '%computador%' OR b.description LIKE '%computador%') THEN 2 ELSE 0 END`;
-    const comboSel = conCombos ? Prisma.sql`
+    const comboSel = conCombos
+      ? Prisma.sql`
       UNION ALL
       (SELECT b.id, b.name AS nombre, 0 AS relevanciaDesc, 0 AS relevanciaCategoria, 0 AS categoriaExacta,
         ${prioridadComboFrag} AS prioridadCombo,
@@ -373,7 +495,8 @@ export class Chat implements OnModuleInit {
         NULL AS oferta_pct, 0 AS oferta, b.image_build AS imagen,
         NULL AS marca, 'Combos' AS categoria, b.slug AS ruta, 'combo' AS tipo
       FROM build_pc_tabla b
-      WHERE ${comboWhereFrag})` : Prisma.empty;
+      WHERE ${comboWhereFrag})`
+      : Prisma.empty;
 
     // Sin booleanQuery (ej: solo "computadora") no hay MATCH de artículos: solo combos.
     // Orden: el combo llamado "computadora" primero, luego el resto.
@@ -395,12 +518,15 @@ export class Chat implements OnModuleInit {
           ORDER BY prioridadCombo DESC, id ASC
           LIMIT ${o.limit} OFFSET ${o.offset}`) as any as any[],
         conCombos
-          ? this.prisma.$queryRaw(Prisma.sql`
+          ? (this.prisma.$queryRaw(Prisma.sql`
             SELECT COUNT(*) AS total FROM build_pc_tabla b
-            WHERE ${comboWhereFrag}`) as any as any[]
+            WHERE ${comboWhereFrag}`) as any as any[])
           : Promise.resolve([{ total: 0 }]),
       ]);
-      return { rows: comboRows, total: Number((comboTot as any[])[0]?.total ?? 0) };
+      return {
+        rows: comboRows,
+        total: Number((comboTot as any[])[0]?.total ?? 0),
+      };
     }
 
     const [rows, artTot, comboTot] = await Promise.all([
@@ -416,14 +542,16 @@ export class Chat implements OnModuleInit {
             OR MATCH(a.description) AGAINST (${o.booleanQuery} IN BOOLEAN MODE))
           ${ofertaFrag}`) as any as any[],
       conCombos
-        ? this.prisma.$queryRaw(Prisma.sql`
+        ? (this.prisma.$queryRaw(Prisma.sql`
           SELECT COUNT(*) AS total FROM build_pc_tabla b
-          WHERE ${comboWhereFrag}`) as any as any[]
+          WHERE ${comboWhereFrag}`) as any as any[])
         : Promise.resolve([{ total: 0 }]),
     ]);
     return {
       rows,
-      total: Number((artTot as any[])[0]?.total ?? 0) + Number((comboTot as any[])[0]?.total ?? 0),
+      total:
+        Number(artTot[0]?.total ?? 0) +
+        Number((comboTot as any[])[0]?.total ?? 0),
     };
   }
 
@@ -436,16 +564,21 @@ export class Chat implements OnModuleInit {
     const idNum = Number(idStr);
     const like = `%${idStr}%`;
     const appURL = this.configService.get<string>('APP_URL');
-    const tipo_de_cambio: any = await this.prisma.exchange_rates.findFirst({ orderBy: { date: 'desc' } });
+    const tipo_de_cambio: any = await this.prisma.exchange_rates.findFirst({
+      orderBy: { date: 'desc' },
+    });
     const rate = Number(tipo_de_cambio?.parallel_rate) || 0;
 
-    const mapRows = (rows: any[]) => rows.map((item: any) => ({
-      ...item,
-      precio: Number((Number(item?.precio) * rate).toFixed(2)),
-      imagen: item?.imagen
-        ? (String(item.imagen).startsWith('http') ? item.imagen : (appURL || '') + item.imagen)
-        : null,
-    }));
+    const mapRows = (rows: any[]) =>
+      rows.map((item: any) => ({
+        ...item,
+        precio: Number((Number(item?.precio) * rate).toFixed(2)),
+        imagen: item?.imagen
+          ? String(item.imagen).startsWith('http')
+            ? item.imagen
+            : (appURL || '') + item.imagen
+          : null,
+      }));
 
     // 1) id exacto
     let data = await this.prisma.$queryRaw`
@@ -469,10 +602,10 @@ export class Chat implements OnModuleInit {
       WHERE a.status=1 AND a.venta=1 AND a.habilitado_web=1 AND a.slug IS NOT NULL AND a.id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)
         AND a.id = ${idNum}
       LIMIT ${limit}
-    ` as any[];
+    `;
 
     // 2) si no hubo id exacto, probar cod_fab
-    if (!data || data.length === 0) {
+    if (!data || (data as any[]).length === 0) {
       data = await this.prisma.$queryRaw`
         SELECT
           a.id,
@@ -495,15 +628,18 @@ export class Chat implements OnModuleInit {
         AND a.cod_fab LIKE ${like}
         ORDER BY (a.cod_fab = ${idStr}) DESC, a.id ASC
         LIMIT ${limit}
-      ` as any[];
+      `;
     }
 
     return {
-      message: data.length === 0 ? 'Lo siento no hay producto con ese código' : 'Aqui tienes los resultados ',
+      message:
+        ((data as any[])?.length ?? 0) === 0
+          ? 'Lo siento no hay producto con ese código'
+          : 'Aqui tienes los resultados ',
       type: 'product_list',
-      data: mapRows(data || []),
+      data: mapRows(data instanceof Array ? data : ((data || []) as any[])),
       meta: {
-        total: (data || []).length,
+        total: (data as any[]).length,
         hasMore: false,
         nextCursor: null,
         queryId: null,
@@ -512,88 +648,89 @@ export class Chat implements OnModuleInit {
   }
 
   async verMas(consultaId: string, pagina: number) {
-  const cache = await this.redisClient.get(
-    `chat:query:${consultaId}`,
-  );
+    const cache = await this.redisClient.get(`chat:query:${consultaId}`);
 
-  if (!cache) {
-    return {
-      message: 'La consulta ha expirado. Realiza una nueva búsqueda.',
-      type: 'product_list',
-      data: [],
-      meta: {
-        total: 0,
-        hasMore: false,
-        nextCursor: null,
-        queryId: null,
-        pagina: 0,
-      },
-    };
-  }
+    if (!cache) {
+      return {
+        message: 'La consulta ha expirado. Realiza una nueva búsqueda.',
+        type: 'product_list',
+        data: [],
+        meta: {
+          total: 0,
+          hasMore: false,
+          nextCursor: null,
+          queryId: null,
+          pagina: 0,
+        },
+      };
+    }
 
-  const parsed = JSON.parse(cache);
+    const parsed = JSON.parse(cache);
 
-  // Modo ofertas pagina de 10 en 10, el resto de 12 en 12
-  const limit = parsed.ofertaPura ? OFFER_LIMIT : 12;
-  const offset = (pagina - 1) * limit;
+    // Modo ofertas pagina de 10 en 10, el resto de 12 en 12
+    const limit = parsed.ofertaPura ? OFFER_LIMIT : 12;
+    const offset = (pagina - 1) * limit;
 
-  // Formato legacy (solo booleanQuery, sin comboLikes): paginado solo-artículos como antes
-  if (parsed.comboLikes === undefined && !parsed.ofertaPura) {
-    return this.verMasLegacy(consultaId, parsed.booleanQuery, pagina);
-  }
+    // Formato legacy (solo booleanQuery, sin comboLikes): paginado solo-artículos como antes
+    if (parsed.comboLikes === undefined && !parsed.ofertaPura) {
+      return this.verMasLegacy(consultaId, parsed.booleanQuery, pagina);
+    }
 
-  const tipo_de_cambio: any =
-    await this.prisma.exchange_rates.findFirst({
+    const tipo_de_cambio: any = await this.prisma.exchange_rates.findFirst({
       orderBy: {
         date: 'desc',
       },
     });
-  const rate = Number(tipo_de_cambio?.parallel_rate) || 0;
-  const appURL = this.configService.get<string>('APP_URL');
+    const rate = Number(tipo_de_cambio?.parallel_rate) || 0;
+    const appURL = this.configService.get<string>('APP_URL');
 
-  const { rows: data, total } = await this.ejecutarBusqueda({
-    booleanQuery: parsed.booleanQuery || '',
-    tokensTexto: parsed.tokensTexto || '',
-    queryOriginal: parsed.queryOriginal || '',
-    pideOferta: !!parsed.pideOferta,
-    ofertaPura: !!parsed.ofertaPura,
-    comboLikes: parsed.comboLikes || [],
-    limit,
-    offset,
-    rate,
-  });
+    const { rows: data, total } = await this.ejecutarBusqueda({
+      booleanQuery: parsed.booleanQuery || '',
+      tokensTexto: parsed.tokensTexto || '',
+      queryOriginal: parsed.queryOriginal || '',
+      pideOferta: !!parsed.pideOferta,
+      ofertaPura: !!parsed.ofertaPura,
+      comboLikes: parsed.comboLikes || [],
+      limit,
+      offset,
+      rate,
+    });
 
-  const hasMore = offset + data.length < total;
+    const hasMore = offset + data.length < total;
 
-  const totalPaginas = Math.ceil(total / limit);
+    const totalPaginas = Math.ceil(total / limit);
 
-  return {
-    message:
-      data.length === 0
-        ? 'No hay más productos'
-        : 'Aquí tienes más resultados',
+    return {
+      message:
+        data.length === 0
+          ? 'No hay más productos'
+          : 'Aquí tienes más resultados',
 
-    type: 'product_list',
+      type: 'product_list',
 
-    data: this.mapPrecios(data, rate, appURL),
+      data: this.mapPrecios(data, rate, appURL),
 
-    meta: {
-      total,
-      hasMore,
-      queryId: hasMore ? consultaId : null,
-      pagina,
-      totalPaginas,
-    },
-  };
+      meta: {
+        total,
+        hasMore,
+        queryId: hasMore ? consultaId : null,
+        pagina,
+        totalPaginas,
+      },
+    };
   }
 
   /** Paginado legacy para queryIds guardados antes del formato unión+ofertas (TTL 10 min). */
-  private async verMasLegacy(consultaId: string, booleanQuery: string, pagina: number) {
-  const limit = 12;
-  const offset = (pagina - 1) * limit;
+  private async verMasLegacy(
+    consultaId: string,
+    booleanQuery: string,
+    pagina: number,
+  ) {
+    const limit = 12;
+    const offset = (pagina - 1) * limit;
 
-  const [data = [], totalResult] = await Promise.all([
-    this.prisma.$queryRaw`
+    const [data = [], totalResult] = await Promise.all([
+      this.prisma.$queryRaw`
       SELECT
         a.id,
         a.description AS nombre,
@@ -632,62 +769,63 @@ export class Chat implements OnModuleInit {
       OFFSET ${offset}
     ` as any,
 
-    this.prisma.$queryRaw<{ total: bigint }[]>`
+      this.prisma.$queryRaw<{ total: bigint }[]>`
       SELECT COUNT(*) AS total
       FROM articles a
       WHERE a.status=1 AND a.venta=1 AND a.habilitado_web=1 AND a.slug IS NOT NULL AND a.id IN (SELECT article_id FROM v_article_stock_global WHERE saldo > 0)
       AND MATCH(a.description)
         AGAINST (${booleanQuery} IN BOOLEAN MODE)
     `,
-  ]);
+    ]);
 
-  const total = Number(totalResult[0]?.total ?? 0);
+    const total = Number(totalResult[0]?.total ?? 0);
 
-  const hasMore = offset + data.length < total;
+    const hasMore = offset + data.length < total;
 
-  const totalPaginas = Math.ceil(total / limit);
+    const totalPaginas = Math.ceil(total / limit);
 
-  const tipo_de_cambio: any =
-    await this.prisma.exchange_rates.findFirst({
+    const tipo_de_cambio: any = await this.prisma.exchange_rates.findFirst({
       orderBy: {
         date: 'desc',
       },
     });
 
-  const appURL =
-    this.configService.get<string>('APP_URL');
+    const appURL = this.configService.get<string>('APP_URL');
 
-  return {
-    message:
-      data.length === 0
-        ? 'No hay más productos'
-        : 'Aquí tienes más resultados',
+    return {
+      message:
+        data.length === 0
+          ? 'No hay más productos'
+          : 'Aquí tienes más resultados',
 
-    type: 'product_list',
+      type: 'product_list',
 
-    data: data.map((item: any) => ({
-      ...item,
+      data: data.map((item: any) => ({
+        ...item,
 
-      precio: Number(
-        (
-          Number(item.precio) *
-          (Number(tipo_de_cambio?.parallel_rate) || Number(tipo_de_cambio?.parallel_rate) || 0)
-        ).toFixed(2)
-      ),
+        precio: Number(
+          (
+            Number(item.precio) *
+            (Number(tipo_de_cambio?.parallel_rate) ||
+              Number(tipo_de_cambio?.parallel_rate) ||
+              0)
+          ).toFixed(2),
+        ),
 
-      imagen: item.imagen
-        ? (String(item.imagen).startsWith('http') ? item.imagen : (appURL || '') + item.imagen)
-        : null,
-    })),
+        imagen: item.imagen
+          ? String(item.imagen).startsWith('http')
+            ? item.imagen
+            : (appURL || '') + item.imagen
+          : null,
+      })),
 
-    meta: {
-      total,
-      hasMore,
-      queryId: hasMore ? consultaId : null,
-      pagina,
-      totalPaginas,
-    },
-  };
+      meta: {
+        total,
+        hasMore,
+        queryId: hasMore ? consultaId : null,
+        pagina,
+        totalPaginas,
+      },
+    };
   }
 }
- 

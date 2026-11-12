@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -9,9 +13,9 @@ export class ArticlesService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
-  ) { }
+  ) {}
   async findAll(params: {
-page?: number;
+    page?: number;
     limit?: number;
     search?: string;
     minPrice?: number;
@@ -25,7 +29,7 @@ page?: number;
     nuevos?: boolean;
     ofertas?: boolean;
     type?: string;
-    aleatorio?: boolean;  
+    aleatorio?: boolean;
   }) {
     const {
       page = 1,
@@ -79,11 +83,12 @@ page?: number;
             ...(synonymMap[originalTerm] || []),
             ...(synonymMap[term] || []),
           ]),
-        // Filtrar términos muy cortos que generan falsos positivos (ej: "pc" → PCIE)
+          // Filtrar términos muy cortos que generan falsos positivos (ej: "pc" → PCIE)
         ).filter((t) => t.length >= 4);
 
         // Si no quedan términos válidos, usar el término original directamente
-        const termsToSearch = relatedTerms.length > 0 ? relatedTerms : [originalTerm];
+        const termsToSearch =
+          relatedTerms.length > 0 ? relatedTerms : [originalTerm];
 
         return {
           OR: termsToSearch.flatMap((t) => [
@@ -120,8 +125,9 @@ page?: number;
       };
     }
 
-    const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
-    const inStockIds = stockRows.map(r => BigInt(r.article_id));
+    const stockRows: any[] = await this.prisma
+      .$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
+    const inStockIds = stockRows.map((r) => BigInt(r.article_id));
     // Si no hay stock, forzar where imposible para devolver vacío rápido
     if (inStockIds.length === 0) {
       where.id = { in: [] };
@@ -131,7 +137,7 @@ page?: number;
       if (exclude) {
         where.AND = [...(where.AND || []), { id: { not: BigInt(exclude) } }];
         // Limpiar where.id.in para no duplicar clave id
-        // Se mantiene el filtro de stock via AND   
+        // Se mantiene el filtro de stock via AND
         const stockIn = where.id;
         delete where.id;
         where.AND.push({ id: stockIn });
@@ -150,8 +156,6 @@ page?: number;
     if (ofertas) {
       where.has_offer = true;
     }
-    
-
 
     // ── Inteligencia de Type Filter ──────────────────────────────────────────
     // Si envían type='brand' y un search, intentamos buscar esa marca y filtrar por ella
@@ -187,22 +191,26 @@ page?: number;
     // Pero para simplificar, si es aleatorio y no hay sort, barajamos
 
     const [articles, total] = await Promise.all([
-      type === 'combo' ? Promise.resolve([]) : this.prisma.articles.findMany({
-        where,
-        skip: aleatorio ? undefined : (isNaN(skip) ? 0 : skip),
-        take: aleatorio ? 100 : limit, // Traemos más para barajar si es aleatorio
-        orderBy,
-        include: {
-          categories: true,
-          brands: true,
-          article_images: true,
-          reviews: {
-            where: { status: 1 },
-            select: { rating: true },
-          },
-        },
-      }),
-      type === 'combo' ? Promise.resolve(0) : this.prisma.articles.count({ where }),
+      type === 'combo'
+        ? Promise.resolve([])
+        : this.prisma.articles.findMany({
+            where,
+            skip: aleatorio ? undefined : isNaN(skip) ? 0 : skip,
+            take: aleatorio ? 100 : limit, // Traemos más para barajar si es aleatorio
+            orderBy,
+            include: {
+              categories: true,
+              brands: true,
+              article_images: true,
+              reviews: {
+                where: { status: 1 },
+                select: { rating: true },
+              },
+            },
+          }),
+      type === 'combo'
+        ? Promise.resolve(0)
+        : this.prisma.articles.count({ where }),
     ]);
 
     let finalArticles = articles;
@@ -219,8 +227,16 @@ page?: number;
 
     if (search) {
       const searchTerms = search.toLowerCase().trim().split(/\s+/);
-      const isComputerSearch = searchTerms.some(t =>
-        ['computadora', 'computadoras', 'pc', 'desktop', 'computador', 'laptop', 'notebook'].includes(t)
+      const isComputerSearch = searchTerms.some((t) =>
+        [
+          'computadora',
+          'computadoras',
+          'pc',
+          'desktop',
+          'computador',
+          'laptop',
+          'notebook',
+        ].includes(t),
       );
 
       if (isComputerSearch) {
@@ -232,11 +248,20 @@ page?: number;
       }
     }
 
-    if (categoryId || subCategoryId || brandId || (type === 'category' && where.category_id)) {
+    if (
+      categoryId ||
+      subCategoryId ||
+      brandId ||
+      (type === 'category' && where.category_id)
+    ) {
       const articleFilter: any = {};
-      const finalCatId = categoryId || (type === 'category' ? where.category_id : undefined);
-      const finalSubCatId = subCategoryId || (type === 'subcategory' ? where.sub_category_id : undefined);
-      const finalBrandId = brandId || (type === 'brand' ? where.brand_id : undefined);
+      const finalCatId =
+        categoryId || (type === 'category' ? where.category_id : undefined);
+      const finalSubCatId =
+        subCategoryId ||
+        (type === 'subcategory' ? where.sub_category_id : undefined);
+      const finalBrandId =
+        brandId || (type === 'brand' ? where.brand_id : undefined);
 
       if (finalCatId) articleFilter.category_id = BigInt(finalCatId);
       if (finalSubCatId) articleFilter.sub_category_id = BigInt(finalSubCatId);
@@ -249,7 +274,6 @@ page?: number;
 
     // Si hay más de una condición usar OR, si hay una sola usarla directa
     const comboWhere: any =
-      
       comboOrConditions.length > 1
         ? { OR: comboOrConditions }
         : comboOrConditions.length === 1
@@ -257,65 +281,87 @@ page?: number;
           : {};
 
     // Si se pide específicamente type brand o category y no hay combos relacionados, no traer combos
-    const skipCombos = type === 'article' || (type === 'brand' && !brandId) || (type === 'category' && !categoryId);
+    const skipCombos =
+      type === 'article' ||
+      (type === 'brand' && !brandId) ||
+      (type === 'category' && !categoryId);
 
-    const rawCombos = (needCombos && !skipCombos) || type === 'combo'
-      ? await this.prisma.build_pc_tabla.findMany({
-          where: {...comboWhere,
+    const rawCombos =
+      (needCombos && !skipCombos) || type === 'combo'
+        ? await this.prisma.build_pc_tabla.findMany({
+            where: {
+              ...comboWhere,
               build_detail_pc_tabla: {
-    some: {
-      articles: {
-        habilitado_web:true
-      },
-    },
-  },
-          },
-          take: aleatorio ? 50 : limit,
-          include: {
-            build_detail_pc_tabla: {
-
-              include: {
-                articles: {
-                  
-                  include: {
-                    article_images: {
-                      orderBy: { position: 'asc' },
-                    },
-                    categories: true,
-                    brands: true,
+                some: {
+                  articles: {
+                    habilitado_web: true,
                   },
                 },
               },
             },
-          },
-        })
-      : [];
-
+            take: aleatorio ? 50 : limit,
+            include: {
+              build_detail_pc_tabla: {
+                include: {
+                  articles: {
+                    include: {
+                      article_images: {
+                        orderBy: { position: 'asc' },
+                      },
+                      categories: true,
+                      brands: true,
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : [];
 
     // ── Tipo de cambio ───────────────────────────────────────────────────────
-   const exchangeRate = await this.prisma.exchange_rates.findFirst({
-  orderBy: {
-    date: 'desc',
-  },
-});
+    const exchangeRate = await this.prisma.exchange_rates.findFirst({
+      orderBy: {
+        date: 'desc',
+      },
+    });
 
-
-const dollarRate = exchangeRate ? Number(exchangeRate.parallel_rate) : 0;
+    const dollarRate = exchangeRate ? Number(exchangeRate.parallel_rate) : 0;
 
     // ── Resolver nombres de filtros aplicados ─────────────────────────────
     const appliedFilters: { type: string; id: string; name: string }[] = [];
 
     if (categoryId) {
-      const cat = await this.prisma.categories.findUnique({ where: { id: BigInt(categoryId) }, select: { name: true } });
-      appliedFilters.push({ type: 'category', id: String(categoryId), name: cat?.name ?? 'Desconocida' });
+      const cat = await this.prisma.categories.findUnique({
+        where: { id: BigInt(categoryId) },
+        select: { name: true },
+      });
+      appliedFilters.push({
+        type: 'category',
+        id: String(categoryId),
+        name: cat?.name ?? 'Desconocida',
+      });
     }
     if (subCategoryId) {
-      const sub = await this.prisma.sub_categories.findUnique({ where: { id: BigInt(subCategoryId) }, select: { name: true } });
-      appliedFilters.push({ type: 'subcategory', id: String(subCategoryId), name: sub?.name ?? 'Desconocida' });
+      const sub = await this.prisma.sub_categories.findUnique({
+        where: { id: BigInt(subCategoryId) },
+        select: { name: true },
+      });
+      appliedFilters.push({
+        type: 'subcategory',
+        id: String(subCategoryId),
+        name: sub?.name ?? 'Desconocida',
+      });
     }
     if (brandId) {
-      const br = await this.prisma.brands.findUnique({ where: { id: BigInt(brandId) }, select: { name: true } });
-      appliedFilters.push({ type: 'brand', id: String(brandId), name: br?.name ?? 'Desconocida' });
+      const br = await this.prisma.brands.findUnique({
+        where: { id: BigInt(brandId) },
+        select: { name: true },
+      });
+      appliedFilters.push({
+        type: 'brand',
+        id: String(brandId),
+        name: br?.name ?? 'Desconocida',
+      });
     }
 
     let finalCombos = rawCombos;
@@ -329,7 +375,6 @@ const dollarRate = exchangeRate ? Number(exchangeRate.parallel_rate) : 0;
     } else if (appliedFilters.length > 0) {
       itemType = appliedFilters[0].type;
     }
-
 
     const data = finalArticles.map((article) => ({
       type: itemType as any,
@@ -346,74 +391,97 @@ const dollarRate = exchangeRate ? Number(exchangeRate.parallel_rate) : 0;
       last_entry_guide: article.last_entry_guide?.toString(),
       article_type_id: article.article_type_id?.toString(),
 
-precio_public_soles: article.public_price
-  ? Number(
-      (
-        article.currency_type_id?.toString() === '1'
-          ? Number(article.public_price)
-          : Number(article.public_price) * Number(dollarRate)
-      ).toFixed(2)
-    )
-  : null,
-
-precio_public_dolares: article.public_price
-  ? Number(
-      (
-        article.currency_type_id?.toString() === '2'
-          ? Number(article.public_price)
-          : Number(dollarRate) > 0 ? Number(article.public_price) / Number(dollarRate) : 0
-      ).toFixed(2)
-    )
-  : null,
-
-precio_porcentaje: article.public_price
-  ? Number(
-      (
-        (
-          article.currency_type_id?.toString() === '1'
-            ? Number(article.public_price)
-            : Number(article.public_price) * Number(dollarRate)
-        ) *
-        (
-          1 - Number(article.offer_price_percent || 0) / 100
-        )
-      ).toFixed(2)
-    )
-  : null,
-
-precio_porcentaje_dolares: article.public_price
-  ? Number(
-      (
-        (
-          article.currency_type_id?.toString() === '2'
-            ? Number(article.public_price)
-            : Number(dollarRate) > 0 ? Number(article.public_price) / Number(dollarRate) : 0
-        ) *
-        (
-          1 - Number(article.offer_price_percent || 0) / 100
-        )
-      ).toFixed(2)
-    )
-  : null,
-
-is_new_for_web: article.is_new_for_web ? 1 : 0,
-
-has_offer: article.has_offer ? 1 : 0,
-
-      offer_price_percent: article.offer_price_percent ? Number(article.offer_price_percent) : 0,
-      precio_final: article.precio_final != null ? Number(article.precio_final) : null,
-      precio_final_soles: article.precio_final != null
-        ? Number((article.currency_type_id?.toString() === '1' ? Number(article.precio_final) : Number(article.precio_final) * Number(dollarRate)).toFixed(2))
+      precio_public_soles: article.public_price
+        ? Number(
+            (article.currency_type_id?.toString() === '1'
+              ? Number(article.public_price)
+              : Number(article.public_price) * Number(dollarRate)
+            ).toFixed(2),
+          )
         : null,
-      precio_final_dolares: article.precio_final != null
-        ? Number((article.currency_type_id?.toString() === '2' ? Number(article.precio_final) : Number(dollarRate) > 0 ? Number(article.precio_final) / Number(dollarRate) : 0).toFixed(2))
+
+      precio_public_dolares: article.public_price
+        ? Number(
+            (article.currency_type_id?.toString() === '2'
+              ? Number(article.public_price)
+              : Number(dollarRate) > 0
+                ? Number(article.public_price) / Number(dollarRate)
+                : 0
+            ).toFixed(2),
+          )
         : null,
-      categories: article.categories ? { ...article.categories, id: article.categories.id.toString(),} : null,
-      brands: article.brands ? { ...article.brands, id: article.brands.id.toString(),} : null,
-      public_price: article.public_price ? parseFloat(article.public_price.toString()) : null,
-      purchase_price: article.purchase_price ? parseFloat(article.purchase_price.toString()) : null,
-      distributor_price: article.distributor_price ? parseFloat(article.distributor_price.toString()) : null,
-      authorized_price: article.authorized_price ? parseFloat(article.authorized_price.toString()) : null,
+
+      precio_porcentaje: article.public_price
+        ? Number(
+            (
+              (article.currency_type_id?.toString() === '1'
+                ? Number(article.public_price)
+                : Number(article.public_price) * Number(dollarRate)) *
+              (1 - Number(article.offer_price_percent || 0) / 100)
+            ).toFixed(2),
+          )
+        : null,
+
+      precio_porcentaje_dolares: article.public_price
+        ? Number(
+            (
+              (article.currency_type_id?.toString() === '2'
+                ? Number(article.public_price)
+                : Number(dollarRate) > 0
+                  ? Number(article.public_price) / Number(dollarRate)
+                  : 0) *
+              (1 - Number(article.offer_price_percent || 0) / 100)
+            ).toFixed(2),
+          )
+        : null,
+
+      is_new_for_web: article.is_new_for_web ? 1 : 0,
+
+      has_offer: article.has_offer ? 1 : 0,
+
+      offer_price_percent: article.offer_price_percent
+        ? Number(article.offer_price_percent)
+        : 0,
+      precio_final:
+        article.precio_final != null ? Number(article.precio_final) : null,
+      precio_final_soles:
+        article.precio_final != null
+          ? Number(
+              (article.currency_type_id?.toString() === '1'
+                ? Number(article.precio_final)
+                : Number(article.precio_final) * Number(dollarRate)
+              ).toFixed(2),
+            )
+          : null,
+      precio_final_dolares:
+        article.precio_final != null
+          ? Number(
+              (article.currency_type_id?.toString() === '2'
+                ? Number(article.precio_final)
+                : Number(dollarRate) > 0
+                  ? Number(article.precio_final) / Number(dollarRate)
+                  : 0
+              ).toFixed(2),
+            )
+          : null,
+      categories: article.categories
+        ? { ...article.categories, id: article.categories.id.toString() }
+        : null,
+      brands: article.brands
+        ? { ...article.brands, id: article.brands.id.toString() }
+        : null,
+      public_price: article.public_price
+        ? parseFloat(article.public_price.toString())
+        : null,
+      purchase_price: article.purchase_price
+        ? parseFloat(article.purchase_price.toString())
+        : null,
+      distributor_price: article.distributor_price
+        ? parseFloat(article.distributor_price.toString())
+        : null,
+      authorized_price: article.authorized_price
+        ? parseFloat(article.authorized_price.toString())
+        : null,
       total_reviews: article.reviews.length,
       name: article.description,
       average_rating:
@@ -429,10 +497,17 @@ has_offer: article.has_offer ? 1 : 0,
 
     // ── Formatear combos y fusionar en data ───────────────────────────────
     // stock para combos (saldo por componente) — misma vista que usa stocks-articles
-    const allComboArticleIds = finalCombos.flatMap((c) => c.build_detail_pc_tabla.map((d) => d.articles.id));
-    const comboStockRows: any[] = allComboArticleIds.length ? await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(allComboArticleIds)})` : [];
+    const allComboArticleIds = finalCombos.flatMap((c) =>
+      c.build_detail_pc_tabla.map((d) => d.articles.id),
+    );
+    const comboStockRows: any[] = allComboArticleIds.length
+      ? await this.prisma
+          .$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(allComboArticleIds)})`
+      : [];
     const comboStockMap = new Map<string, number>();
-    comboStockRows.forEach((r: any) => comboStockMap.set(String(r.article_id), Number(r.saldo)));
+    comboStockRows.forEach((r: any) =>
+      comboStockMap.set(String(r.article_id), Number(r.saldo)),
+    );
     // Precios de combos vienen de la suma de sus artículos (como artículos normales), no de combo.total_price (estaba en 0)
     const formattedCombos = finalCombos.map((combo) => {
       // Total desde precios efectivos (precio_final > oferta > public_price),
@@ -446,34 +521,50 @@ has_offer: article.has_offer ? 1 : 0,
           article_id: art.id.toString(),
           cod_fab: art.cod_fab,
           description: art.description,
-          public_price: art.public_price ? parseFloat(art.public_price.toString()) : null,
-          public_price_soles: art.public_price ? parseFloat((
-                  currencyStr === '1'
-                    ? parseFloat(art.public_price.toString())
-                    : parseFloat(art.public_price.toString()) * dollarRate
-                ).toFixed(2),) : null,
-          public_price_dolares: art.public_price ? parseFloat((
-                  currencyStr === '2'
-                    ? parseFloat(art.public_price.toString())
-                    : dollarRate > 0 ? parseFloat(art.public_price.toString()) / dollarRate : 0
-                ).toFixed(2),): null,
-          precio_final: art.precio_final != null ? Number(art.precio_final) : null,
+          public_price: art.public_price
+            ? parseFloat(art.public_price.toString())
+            : null,
+          public_price_soles: art.public_price
+            ? parseFloat(
+                (currencyStr === '1'
+                  ? parseFloat(art.public_price.toString())
+                  : parseFloat(art.public_price.toString()) * dollarRate
+                ).toFixed(2),
+              )
+            : null,
+          public_price_dolares: art.public_price
+            ? parseFloat(
+                (currencyStr === '2'
+                  ? parseFloat(art.public_price.toString())
+                  : dollarRate > 0
+                    ? parseFloat(art.public_price.toString()) / dollarRate
+                    : 0
+                ).toFixed(2),
+              )
+            : null,
+          precio_final:
+            art.precio_final != null ? Number(art.precio_final) : null,
           has_offer: art.has_offer ? 1 : 0,
-          offer_price_percent: art.offer_price_percent ? Number(art.offer_price_percent) : 0,
+          offer_price_percent: art.offer_price_percent
+            ? Number(art.offer_price_percent)
+            : 0,
           effective_price: line.effective_price,
           effective_price_soles: line.effective_price_soles,
           effective_price_dolares: line.effective_price_dolares,
           saldo: comboStockMap.get(String(art.id)) ?? 0,
-          category: art.categories? {
+          category: art.categories
+            ? {
                 id: art.categories.id.toString(),
                 name: art.categories.name,
-              }: null,
-          brand: art.brands ? {
+              }
+            : null,
+          brand: art.brands
+            ? {
                 id: art.brands.id.toString(),
                 name: art.brands.name,
               }
             : null,
-          article_images: art.article_images.map(img => ({
+          article_images: art.article_images.map((img) => ({
             id: img.id.toString(),
             url: this.formatImageUrl(img.url),
             position: img.position,
@@ -481,7 +572,11 @@ has_offer: article.has_offer ? 1 : 0,
           })),
         };
       });
-      const totals = calcComboTotals(combo.build_detail_pc_tabla, dollarRate, combo.total_price);
+      const totals = calcComboTotals(
+        combo.build_detail_pc_tabla,
+        dollarRate,
+        combo.total_price,
+      );
       const finalTotalPrice = totals.total_price;
       const finalTotalPriceSoles = totals.total_price_soles;
       return {
@@ -515,10 +610,9 @@ has_offer: article.has_offer ? 1 : 0,
   }
 
   async findBySlug(slug: string) {
-
-     if (!slug || slug === 'null' || slug === 'undefined') {
-    throw new NotFoundException(`Slug inválido: ${slug}`);
-  }
+    if (!slug || slug === 'null' || slug === 'undefined') {
+      throw new NotFoundException(`Slug inválido: ${slug}`);
+    }
 
     const article = await this.prisma.articles.findFirst({
       where: { slug, status: 1, venta: true, habilitado_web: true },
@@ -532,13 +626,20 @@ has_offer: article.has_offer ? 1 : 0,
 
     if (article) {
       // Validar stock > 0 (v_article_stock_global.saldo) - si no hay stock, intentar combo antes de fallar
-      const stockCheck: any[] = await this.prisma.$queryRaw`SELECT saldo FROM v_article_stock_global WHERE article_id = ${article.id}`;
+      const stockCheck: any[] = await this.prisma
+        .$queryRaw`SELECT saldo FROM v_article_stock_global WHERE article_id = ${article.id}`;
       if (stockCheck[0] && Number(stockCheck[0].saldo) > 0) {
-        const exchangeRateArt = await this.prisma.exchange_rates.findFirst({ orderBy: { date: 'desc' } });
-        const dollarRateArt = exchangeRateArt ? Number(exchangeRateArt.parallel_rate) : 0;
+        const exchangeRateArt = await this.prisma.exchange_rates.findFirst({
+          orderBy: { date: 'desc' },
+        });
+        const dollarRateArt = exchangeRateArt
+          ? Number(exchangeRateArt.parallel_rate)
+          : 0;
         let subCategoryArt: any = null;
         if (article.sub_category_id) {
-          subCategoryArt = await this.prisma.sub_categories.findUnique({ where: { id: article.sub_category_id } });
+          subCategoryArt = await this.prisma.sub_categories.findUnique({
+            where: { id: article.sub_category_id },
+          });
         }
         // retornar artículo (mismo bloque de abajo, pero ya con stock válido)
         const matched = article;
@@ -557,29 +658,104 @@ has_offer: article.has_offer ? 1 : 0,
           last_supplier: matched.last_supplier?.toString(),
           last_entry_guide: matched.last_entry_guide?.toString(),
           article_type_id: matched.article_type_id?.toString(),
-          precio_public_soles: matched.public_price ? Number((matched.currency_type_id?.toString() === '1' ? Number(matched.public_price) : Number(matched.public_price) * Number(dollarRateArt)).toFixed(2)) : null,
-          precio_public_dolares: matched.public_price ? Number((matched.currency_type_id?.toString() === '2' ? Number(matched.public_price) : dollarRateArt > 0 ? Number(matched.public_price) / Number(dollarRateArt) : 0).toFixed(2)) : null,
-          precio_porcentaje: matched.public_price ? Number(((matched.currency_type_id?.toString() === '1' ? Number(matched.public_price) : Number(matched.public_price) * Number(dollarRateArt)) * (1 - Number(matched.offer_price_percent || 0) / 100)).toFixed(2)) : null,
-          precio_porcentaje_dolares: matched.public_price ? Number(((matched.currency_type_id?.toString() === '2' ? Number(matched.public_price) : dollarRateArt > 0 ? Number(matched.public_price) / Number(dollarRateArt) : 0) * (1 - Number(matched.offer_price_percent || 0) / 100)).toFixed(2)) : null,
+          precio_public_soles: matched.public_price
+            ? Number(
+                (matched.currency_type_id?.toString() === '1'
+                  ? Number(matched.public_price)
+                  : Number(matched.public_price) * Number(dollarRateArt)
+                ).toFixed(2),
+              )
+            : null,
+          precio_public_dolares: matched.public_price
+            ? Number(
+                (matched.currency_type_id?.toString() === '2'
+                  ? Number(matched.public_price)
+                  : dollarRateArt > 0
+                    ? Number(matched.public_price) / Number(dollarRateArt)
+                    : 0
+                ).toFixed(2),
+              )
+            : null,
+          precio_porcentaje: matched.public_price
+            ? Number(
+                (
+                  (matched.currency_type_id?.toString() === '1'
+                    ? Number(matched.public_price)
+                    : Number(matched.public_price) * Number(dollarRateArt)) *
+                  (1 - Number(matched.offer_price_percent || 0) / 100)
+                ).toFixed(2),
+              )
+            : null,
+          precio_porcentaje_dolares: matched.public_price
+            ? Number(
+                (
+                  (matched.currency_type_id?.toString() === '2'
+                    ? Number(matched.public_price)
+                    : dollarRateArt > 0
+                      ? Number(matched.public_price) / Number(dollarRateArt)
+                      : 0) *
+                  (1 - Number(matched.offer_price_percent || 0) / 100)
+                ).toFixed(2),
+              )
+            : null,
           is_new_for_web: matched.is_new_for_web ? 1 : 0,
           has_offer: matched.has_offer ? 1 : 0,
-          offer_price_percent: matched.offer_price_percent ? Number(matched.offer_price_percent) : 0,
-          precio_final: matched.precio_final != null ? Number(matched.precio_final) : null,
-          precio_final_soles: matched.precio_final != null
-            ? Number((matched.currency_type_id?.toString() === '1' ? Number(matched.precio_final) : Number(matched.precio_final) * Number(dollarRateArt)).toFixed(2))
+          offer_price_percent: matched.offer_price_percent
+            ? Number(matched.offer_price_percent)
+            : 0,
+          precio_final:
+            matched.precio_final != null ? Number(matched.precio_final) : null,
+          precio_final_soles:
+            matched.precio_final != null
+              ? Number(
+                  (matched.currency_type_id?.toString() === '1'
+                    ? Number(matched.precio_final)
+                    : Number(matched.precio_final) * Number(dollarRateArt)
+                  ).toFixed(2),
+                )
+              : null,
+          precio_final_dolares:
+            matched.precio_final != null
+              ? Number(
+                  (matched.currency_type_id?.toString() === '2'
+                    ? Number(matched.precio_final)
+                    : Number(dollarRateArt) > 0
+                      ? Number(matched.precio_final) / Number(dollarRateArt)
+                      : 0
+                  ).toFixed(2),
+                )
+              : null,
+          categories: matched.categories
+            ? { ...matched.categories, id: matched.categories.id.toString() }
             : null,
-          precio_final_dolares: matched.precio_final != null
-            ? Number((matched.currency_type_id?.toString() === '2' ? Number(matched.precio_final) : Number(dollarRateArt) > 0 ? Number(matched.precio_final) / Number(dollarRateArt) : 0).toFixed(2))
+          brands: matched.brands
+            ? { ...matched.brands, id: matched.brands.id.toString() }
             : null,
-          categories: matched.categories ? { ...matched.categories, id: matched.categories.id.toString() } : null,
-          brands: matched.brands ? { ...matched.brands, id: matched.brands.id.toString() } : null,
-          sub_categories: subCategoryArt ? { ...subCategoryArt, id: subCategoryArt.id.toString() } : null,
-          public_price: matched.public_price ? parseFloat(matched.public_price.toString()) : null,
-          purchase_price: matched.purchase_price ? parseFloat(matched.purchase_price.toString()) : null,
-          distributor_price: matched.distributor_price ? parseFloat(matched.distributor_price.toString()) : null,
-          authorized_price: matched.authorized_price ? parseFloat(matched.authorized_price.toString()) : null,
+          sub_categories: subCategoryArt
+            ? { ...subCategoryArt, id: subCategoryArt.id.toString() }
+            : null,
+          public_price: matched.public_price
+            ? parseFloat(matched.public_price.toString())
+            : null,
+          purchase_price: matched.purchase_price
+            ? parseFloat(matched.purchase_price.toString())
+            : null,
+          distributor_price: matched.distributor_price
+            ? parseFloat(matched.distributor_price.toString())
+            : null,
+          authorized_price: matched.authorized_price
+            ? parseFloat(matched.authorized_price.toString())
+            : null,
           total_reviews: matched.reviews.length,
-          average_rating: matched.reviews.length > 0 ? parseFloat((matched.reviews.reduce((sum, r) => sum + r.rating, 0) / matched.reviews.length).toFixed(1)) : 0,
+          average_rating:
+            matched.reviews.length > 0
+              ? parseFloat(
+                  (
+                    matched.reviews.reduce((sum, r) => sum + r.rating, 0) /
+                    matched.reviews.length
+                  ).toFixed(1),
+                )
+              : 0,
         };
       }
     }
@@ -602,14 +778,27 @@ has_offer: article.has_offer ? 1 : 0,
       },
     });
     if (comboBySlug) {
-      const exchangeRate = await this.prisma.exchange_rates.findFirst({ orderBy: { date: 'desc' } });
+      const exchangeRate = await this.prisma.exchange_rates.findFirst({
+        orderBy: { date: 'desc' },
+      });
       const dollarRate = exchangeRate ? Number(exchangeRate.parallel_rate) : 0;
       // stock por componente para saldo en items[]
-      const articleIds = comboBySlug.build_detail_pc_tabla.map((d) => d.articles.id);
-      const stockRows: any[] = articleIds.length ? await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})` : [];
+      const articleIds = comboBySlug.build_detail_pc_tabla.map(
+        (d) => d.articles.id,
+      );
+      const stockRows: any[] = articleIds.length
+        ? await this.prisma
+            .$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})`
+        : [];
       const stockMap = new Map<string, number>();
-      stockRows.forEach((r: any) => stockMap.set(String(r.article_id), Number(r.saldo)));
-      const totalsBySlug = calcComboTotals(comboBySlug.build_detail_pc_tabla, dollarRate, comboBySlug.total_price);
+      stockRows.forEach((r: any) =>
+        stockMap.set(String(r.article_id), Number(r.saldo)),
+      );
+      const totalsBySlug = calcComboTotals(
+        comboBySlug.build_detail_pc_tabla,
+        dollarRate,
+        comboBySlug.total_price,
+      );
       const finalTotalPrice = totalsBySlug.total_price;
       const finalTotalPriceSoles = totalsBySlug.total_price_soles;
       return {
@@ -626,25 +815,65 @@ has_offer: article.has_offer ? 1 : 0,
         items: comboBySlug.build_detail_pc_tabla.map((detail) => {
           const lineBySlug = priceComboLine(detail.articles, dollarRate);
           return {
-          quantity: detail.quantity,
-          article_id: detail.articles.id.toString(),
-          cod_fab: detail.articles.cod_fab,
-          description: detail.articles.description,
-          slug: detail.articles.slug,
-          name: detail.articles.description,
-          public_price: detail.articles.public_price ? parseFloat(detail.articles.public_price.toString()) : null,
-          public_price_soles: detail.articles.public_price ? parseFloat((detail.articles.currency_type_id?.toString() === '1' ? parseFloat(detail.articles.public_price.toString()) : parseFloat(detail.articles.public_price.toString()) * dollarRate).toFixed(2)) : null,
-          public_price_dolares: detail.articles.public_price ? parseFloat((detail.articles.currency_type_id?.toString() === '2' ? parseFloat(detail.articles.public_price.toString()) : dollarRate > 0 ? parseFloat(detail.articles.public_price.toString()) / dollarRate : 0).toFixed(2)) : null,
-          precio_final: detail.articles.precio_final != null ? Number(detail.articles.precio_final) : null,
-          has_offer: detail.articles.has_offer ? 1 : 0,
-          offer_price_percent: detail.articles.offer_price_percent ? Number(detail.articles.offer_price_percent) : 0,
-          effective_price: lineBySlug.effective_price,
-          effective_price_soles: lineBySlug.effective_price_soles,
-          effective_price_dolares: lineBySlug.effective_price_dolares,
-          saldo: stockMap.get(String(detail.articles.id)) ?? 0,
-          category: detail.articles.categories ? { id: detail.articles.categories.id.toString(), name: detail.articles.categories.name } : null,
-          brand: detail.articles.brands ? { id: detail.articles.brands.id.toString(), name: detail.articles.brands.name } : null,
-          article_images: detail.articles.article_images.map((img: any) => ({ id: img.id.toString(), url: this.formatImageUrl(img.url), position: img.position, is_main: img.is_main })),
+            quantity: detail.quantity,
+            article_id: detail.articles.id.toString(),
+            cod_fab: detail.articles.cod_fab,
+            description: detail.articles.description,
+            slug: detail.articles.slug,
+            name: detail.articles.description,
+            public_price: detail.articles.public_price
+              ? parseFloat(detail.articles.public_price.toString())
+              : null,
+            public_price_soles: detail.articles.public_price
+              ? parseFloat(
+                  (detail.articles.currency_type_id?.toString() === '1'
+                    ? parseFloat(detail.articles.public_price.toString())
+                    : parseFloat(detail.articles.public_price.toString()) *
+                      dollarRate
+                  ).toFixed(2),
+                )
+              : null,
+            public_price_dolares: detail.articles.public_price
+              ? parseFloat(
+                  (detail.articles.currency_type_id?.toString() === '2'
+                    ? parseFloat(detail.articles.public_price.toString())
+                    : dollarRate > 0
+                      ? parseFloat(detail.articles.public_price.toString()) /
+                        dollarRate
+                      : 0
+                  ).toFixed(2),
+                )
+              : null,
+            precio_final:
+              detail.articles.precio_final != null
+                ? Number(detail.articles.precio_final)
+                : null,
+            has_offer: detail.articles.has_offer ? 1 : 0,
+            offer_price_percent: detail.articles.offer_price_percent
+              ? Number(detail.articles.offer_price_percent)
+              : 0,
+            effective_price: lineBySlug.effective_price,
+            effective_price_soles: lineBySlug.effective_price_soles,
+            effective_price_dolares: lineBySlug.effective_price_dolares,
+            saldo: stockMap.get(String(detail.articles.id)) ?? 0,
+            category: detail.articles.categories
+              ? {
+                  id: detail.articles.categories.id.toString(),
+                  name: detail.articles.categories.name,
+                }
+              : null,
+            brand: detail.articles.brands
+              ? {
+                  id: detail.articles.brands.id.toString(),
+                  name: detail.articles.brands.name,
+                }
+              : null,
+            article_images: detail.articles.article_images.map((img: any) => ({
+              id: img.id.toString(),
+              url: this.formatImageUrl(img.url),
+              position: img.position,
+              is_main: img.is_main,
+            })),
           };
         }),
       };
@@ -654,10 +883,9 @@ has_offer: article.has_offer ? 1 : 0,
   }
 
   async findOne(id: number) {
-
-      if (id === null || id === undefined || isNaN(Number(id))) {
-    throw new NotFoundException(`ID de artículo inválido: ${id}`);
-  }
+    if (id === null || id === undefined || isNaN(Number(id))) {
+      throw new NotFoundException(`ID de artículo inválido: ${id}`);
+    }
     const article = await this.prisma.articles.findUnique({
       where: { id: BigInt(id) },
       include: {
@@ -678,114 +906,145 @@ has_offer: article.has_offer ? 1 : 0,
 
     if (article) {
       // Solo mostrar en web si está habilitado, activo, venta habilitada y con stock > 0
-      const isWebVisible = article.status === 1 && article.venta === true && (article as any).habilitado_web === true;
+      const isWebVisible =
+        article.status === 1 &&
+        article.venta === true &&
+        (article as any).habilitado_web === true;
       if (isWebVisible) {
-        const stockCheck: any[] = await this.prisma.$queryRaw`SELECT saldo FROM v_article_stock_global WHERE article_id = ${article.id}`;
+        const stockCheck: any[] = await this.prisma
+          .$queryRaw`SELECT saldo FROM v_article_stock_global WHERE article_id = ${article.id}`;
         if (!stockCheck[0] || Number(stockCheck[0].saldo) <= 0) {
           // Sin stock -> tratar como no encontrado para web, caer al lookup de combo
         } else {
-      let subCategory: any = null;
-      if (article.sub_category_id) {
-        subCategory = await this.prisma.sub_categories.findUnique({
-          where: { id: article.sub_category_id },
-        });
-      }
+          let subCategory: any = null;
+          if (article.sub_category_id) {
+            subCategory = await this.prisma.sub_categories.findUnique({
+              where: { id: article.sub_category_id },
+            });
+          }
 
-      return {
-        type: 'article' as const,
-        name: article.description,
-        ...article,
-        id: article.id.toString(),
-        measurement_unit_id: article.measurement_unit_id?.toString(),
-        brand_id: article.brand_id?.toString(),
-        category_id: article.category_id?.toString(),
-        sub_category_id: article.sub_category_id?.toString(),
-        currency_type_id: article.currency_type_id?.toString(),
-        company_type_id: article.company_type_id?.toString(),
-        user_id: article.user_id?.toString(),
-        last_supplier: article.last_supplier?.toString(),
-        last_entry_guide: article.last_entry_guide?.toString(),
-        article_type_id: article.article_type_id?.toString(),
-        precio_public_soles: article.public_price
-  ? Number(
-      (
-        article.currency_type_id?.toString() === '1'
-          ? Number(article.public_price)
-          : Number(article.public_price) * Number(dollarRate)
-      ).toFixed(2)
-    )
-  : null,
+          return {
+            type: 'article' as const,
+            name: article.description,
+            ...article,
+            id: article.id.toString(),
+            measurement_unit_id: article.measurement_unit_id?.toString(),
+            brand_id: article.brand_id?.toString(),
+            category_id: article.category_id?.toString(),
+            sub_category_id: article.sub_category_id?.toString(),
+            currency_type_id: article.currency_type_id?.toString(),
+            company_type_id: article.company_type_id?.toString(),
+            user_id: article.user_id?.toString(),
+            last_supplier: article.last_supplier?.toString(),
+            last_entry_guide: article.last_entry_guide?.toString(),
+            article_type_id: article.article_type_id?.toString(),
+            precio_public_soles: article.public_price
+              ? Number(
+                  (article.currency_type_id?.toString() === '1'
+                    ? Number(article.public_price)
+                    : Number(article.public_price) * Number(dollarRate)
+                  ).toFixed(2),
+                )
+              : null,
 
-precio_public_dolares: article.public_price
-  ? Number(
-      (
-        article.currency_type_id?.toString() === '2'
-          ? Number(article.public_price)
-          : Number(dollarRate) > 0 ? Number(article.public_price) / Number(dollarRate) : 0
-      ).toFixed(2)
-    )
-  : null,
+            precio_public_dolares: article.public_price
+              ? Number(
+                  (article.currency_type_id?.toString() === '2'
+                    ? Number(article.public_price)
+                    : Number(dollarRate) > 0
+                      ? Number(article.public_price) / Number(dollarRate)
+                      : 0
+                  ).toFixed(2),
+                )
+              : null,
 
-precio_porcentaje: article.public_price
-  ? Number(
-      (
-        (
-          article.currency_type_id?.toString() === '1'
-            ? Number(article.public_price)
-            : Number(article.public_price) * Number(dollarRate)
-        ) *
-        (
-          1 - Number(article.offer_price_percent || 0) / 100
-        )
-      ).toFixed(2)
-    )
-  : null,
+            precio_porcentaje: article.public_price
+              ? Number(
+                  (
+                    (article.currency_type_id?.toString() === '1'
+                      ? Number(article.public_price)
+                      : Number(article.public_price) * Number(dollarRate)) *
+                    (1 - Number(article.offer_price_percent || 0) / 100)
+                  ).toFixed(2),
+                )
+              : null,
 
-precio_porcentaje_dolares: article.public_price
-  ? Number(
-      (
-        (
-          article.currency_type_id?.toString() === '2'
-            ? Number(article.public_price)
-            : Number(dollarRate) > 0 ? Number(article.public_price) / Number(dollarRate) : 0
-        ) *
-        (
-          1 - Number(article.offer_price_percent || 0) / 100
-        )
-      ).toFixed(2)
-    )
-  : null,
+            precio_porcentaje_dolares: article.public_price
+              ? Number(
+                  (
+                    (article.currency_type_id?.toString() === '2'
+                      ? Number(article.public_price)
+                      : Number(dollarRate) > 0
+                        ? Number(article.public_price) / Number(dollarRate)
+                        : 0) *
+                    (1 - Number(article.offer_price_percent || 0) / 100)
+                  ).toFixed(2),
+                )
+              : null,
 
-is_new_for_web: article.is_new_for_web ? 1 : 0,
+            is_new_for_web: article.is_new_for_web ? 1 : 0,
 
-has_offer: article.has_offer ? 1 : 0,
+            has_offer: article.has_offer ? 1 : 0,
 
-        offer_price_percent: article.offer_price_percent ? Number(article.offer_price_percent) : 0,
-        precio_final: article.precio_final != null ? Number(article.precio_final) : null,
-        precio_final_soles: article.precio_final != null
-          ? Number((article.currency_type_id?.toString() === '1' ? Number(article.precio_final) : Number(article.precio_final) * Number(dollarRate)).toFixed(2))
-          : null,
-        precio_final_dolares: article.precio_final != null
-          ? Number((article.currency_type_id?.toString() === '2' ? Number(article.precio_final) : Number(dollarRate) > 0 ? Number(article.precio_final) / Number(dollarRate) : 0).toFixed(2))
-          : null,
-        categories: article.categories ? { ...article.categories, id: article.categories.id.toString() } : null,
-        brands: article.brands ? { ...article.brands, id: article.brands.id.toString() } : null,
-        sub_categories: subCategory ? { ...subCategory, id: subCategory.id.toString() } : null,
-        public_price: article.public_price ? parseFloat(article.public_price.toString()) : null,
-        purchase_price: article.purchase_price ? parseFloat(article.purchase_price.toString()) : null,
-        distributor_price: article.distributor_price ? parseFloat(article.distributor_price.toString()) : null,
-        authorized_price: article.authorized_price ? parseFloat(article.authorized_price.toString()) : null,
-        total_reviews: article.reviews.length,
-        average_rating:
-          article.reviews.length > 0
-            ? parseFloat(
-              (
-                article.reviews.reduce((sum, r) => sum + r.rating, 0) /
-                article.reviews.length
-              ).toFixed(1),
-            )
-            : 0,
-      };
+            offer_price_percent: article.offer_price_percent
+              ? Number(article.offer_price_percent)
+              : 0,
+            precio_final:
+              article.precio_final != null
+                ? Number(article.precio_final)
+                : null,
+            precio_final_soles:
+              article.precio_final != null
+                ? Number(
+                    (article.currency_type_id?.toString() === '1'
+                      ? Number(article.precio_final)
+                      : Number(article.precio_final) * Number(dollarRate)
+                    ).toFixed(2),
+                  )
+                : null,
+            precio_final_dolares:
+              article.precio_final != null
+                ? Number(
+                    (article.currency_type_id?.toString() === '2'
+                      ? Number(article.precio_final)
+                      : Number(dollarRate) > 0
+                        ? Number(article.precio_final) / Number(dollarRate)
+                        : 0
+                    ).toFixed(2),
+                  )
+                : null,
+            categories: article.categories
+              ? { ...article.categories, id: article.categories.id.toString() }
+              : null,
+            brands: article.brands
+              ? { ...article.brands, id: article.brands.id.toString() }
+              : null,
+            sub_categories: subCategory
+              ? { ...subCategory, id: subCategory.id.toString() }
+              : null,
+            public_price: article.public_price
+              ? parseFloat(article.public_price.toString())
+              : null,
+            purchase_price: article.purchase_price
+              ? parseFloat(article.purchase_price.toString())
+              : null,
+            distributor_price: article.distributor_price
+              ? parseFloat(article.distributor_price.toString())
+              : null,
+            authorized_price: article.authorized_price
+              ? parseFloat(article.authorized_price.toString())
+              : null,
+            total_reviews: article.reviews.length,
+            average_rating:
+              article.reviews.length > 0
+                ? parseFloat(
+                    (
+                      article.reviews.reduce((sum, r) => sum + r.rating, 0) /
+                      article.reviews.length
+                    ).toFixed(1),
+                  )
+                : 0,
+          };
         }
       }
     }
@@ -811,22 +1070,33 @@ has_offer: article.has_offer ? 1 : 0,
     });
 
     if (combo) {
-      const articleIdsCombo = combo.build_detail_pc_tabla.map((d) => d.articles.id);
-      const stockRowsCombo: any[] = articleIdsCombo.length ? await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIdsCombo)})` : [];
+      const articleIdsCombo = combo.build_detail_pc_tabla.map(
+        (d) => d.articles.id,
+      );
+      const stockRowsCombo: any[] = articleIdsCombo.length
+        ? await this.prisma
+            .$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIdsCombo)})`
+        : [];
       const stockMapCombo = new Map<string, number>();
-      stockRowsCombo.forEach((r: any) => stockMapCombo.set(String(r.article_id), Number(r.saldo)));
+      stockRowsCombo.forEach((r: any) =>
+        stockMapCombo.set(String(r.article_id), Number(r.saldo)),
+      );
       // Total desde precios efectivos (precio_final > oferta > public_price),
       // redondeo único al final para que cuadre con la suma de los items.
-      const totalsById = calcComboTotals(combo.build_detail_pc_tabla, dollarRate, combo.total_price);
+      const totalsById = calcComboTotals(
+        combo.build_detail_pc_tabla,
+        dollarRate,
+        combo.total_price,
+      );
       const finalTotalPrice = totalsById.total_price;
       const finalTotalPriceSoles = totalsById.total_price_soles;
       return {
         id: combo.id.toString(),
         type: 'combo' as const,
         name: combo.name,
-      slug: combo.slug,
-      description: combo.description,
-      total_price: finalTotalPrice,
+        slug: combo.slug,
+        description: combo.description,
+        total_price: finalTotalPrice,
         total_price_soles: finalTotalPriceSoles,
         image_build: this.formatBuildImageUrl(combo.image_build),
         created_at: combo.created_at,
@@ -834,58 +1104,65 @@ has_offer: article.has_offer ? 1 : 0,
         items: combo.build_detail_pc_tabla.map((detail) => {
           const lineById = priceComboLine(detail.articles, dollarRate);
           return {
-          quantity: detail.quantity,
-          article_id: detail.articles.id.toString(),
-          cod_fab: detail.articles.cod_fab,
-          description: detail.articles.description,
-          slug: detail.articles.slug,
-          name: detail.articles.description,
-          public_price: detail.articles.public_price
-            ? parseFloat(detail.articles.public_price.toString())
-            : null,
-          public_price_soles: detail.articles.public_price
-            ? parseFloat(
-                (
-                  detail.articles.currency_type_id?.toString() === '1'
+            quantity: detail.quantity,
+            article_id: detail.articles.id.toString(),
+            cod_fab: detail.articles.cod_fab,
+            description: detail.articles.description,
+            slug: detail.articles.slug,
+            name: detail.articles.description,
+            public_price: detail.articles.public_price
+              ? parseFloat(detail.articles.public_price.toString())
+              : null,
+            public_price_soles: detail.articles.public_price
+              ? parseFloat(
+                  (detail.articles.currency_type_id?.toString() === '1'
                     ? parseFloat(detail.articles.public_price.toString())
-                    : parseFloat(detail.articles.public_price.toString()) * dollarRate
-                ).toFixed(2),
-              )
-            : null,
-          public_price_dolares: detail.articles.public_price
-            ? parseFloat(
-                (
-                  detail.articles.currency_type_id?.toString() === '2'
+                    : parseFloat(detail.articles.public_price.toString()) *
+                      dollarRate
+                  ).toFixed(2),
+                )
+              : null,
+            public_price_dolares: detail.articles.public_price
+              ? parseFloat(
+                  (detail.articles.currency_type_id?.toString() === '2'
                     ? parseFloat(detail.articles.public_price.toString())
-                    : dollarRate > 0 ? parseFloat(detail.articles.public_price.toString()) / dollarRate : 0
-                ).toFixed(2),
-              )
-            : null,
-          precio_final: detail.articles.precio_final != null ? Number(detail.articles.precio_final) : null,
-          has_offer: detail.articles.has_offer ? 1 : 0,
-          offer_price_percent: detail.articles.offer_price_percent ? Number(detail.articles.offer_price_percent) : 0,
-          effective_price: lineById.effective_price,
-          effective_price_soles: lineById.effective_price_soles,
-          effective_price_dolares: lineById.effective_price_dolares,
-          saldo: stockMapCombo.get(String(detail.articles.id)) ?? 0,
-          category: detail.articles.categories
-            ? {
-              id: detail.articles.categories.id.toString(),
-              name: detail.articles.categories.name,
-            }
-            : null,
-          brand: detail.articles.brands
-            ? {
-              id: detail.articles.brands.id.toString(),
-              name: detail.articles.brands.name,
-            }
-            : null,
-          article_images: detail.articles.article_images.map(img => ({
-            id: img.id.toString(),
-            url: this.formatImageUrl(img.url),
-            position: img.position,
-            is_main: img.is_main,
-          })),
+                    : dollarRate > 0
+                      ? parseFloat(detail.articles.public_price.toString()) /
+                        dollarRate
+                      : 0
+                  ).toFixed(2),
+                )
+              : null,
+            precio_final:
+              detail.articles.precio_final != null
+                ? Number(detail.articles.precio_final)
+                : null,
+            has_offer: detail.articles.has_offer ? 1 : 0,
+            offer_price_percent: detail.articles.offer_price_percent
+              ? Number(detail.articles.offer_price_percent)
+              : 0,
+            effective_price: lineById.effective_price,
+            effective_price_soles: lineById.effective_price_soles,
+            effective_price_dolares: lineById.effective_price_dolares,
+            saldo: stockMapCombo.get(String(detail.articles.id)) ?? 0,
+            category: detail.articles.categories
+              ? {
+                  id: detail.articles.categories.id.toString(),
+                  name: detail.articles.categories.name,
+                }
+              : null,
+            brand: detail.articles.brands
+              ? {
+                  id: detail.articles.brands.id.toString(),
+                  name: detail.articles.brands.name,
+                }
+              : null,
+            article_images: detail.articles.article_images.map((img) => ({
+              id: img.id.toString(),
+              url: this.formatImageUrl(img.url),
+              position: img.position,
+              is_main: img.is_main,
+            })),
           };
         }),
       };
@@ -929,7 +1206,10 @@ has_offer: article.has_offer ? 1 : 0,
 
     let updated = 0;
     for (const article of articles) {
-      const slug = this.generateArticleSlug(article.description!, Number(article.id));
+      const slug = this.generateArticleSlug(
+        article.description!,
+        Number(article.id),
+      );
       await this.prisma.articles.update({
         where: { id: article.id },
         data: { slug },
@@ -951,9 +1231,8 @@ has_offer: article.has_offer ? 1 : 0,
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
 
-    const truncated = base.length <= 50
-      ? base
-      : base.slice(0, 50).replace(/-[^-]*$/, '');
+    const truncated =
+      base.length <= 50 ? base : base.slice(0, 50).replace(/-[^-]*$/, '');
 
     return `${truncated}-${id}`;
   }
@@ -996,7 +1275,9 @@ has_offer: article.has_offer ? 1 : 0,
    * Obtiene el slug desde BD y lo envía en el body del webhook.
    * Si no hay slug (null/bulk), hace purga genérica sin body.
    */
-  private async notifyProductRevalidationById(articleId: bigint | number): Promise<void> {
+  private async notifyProductRevalidationById(
+    articleId: bigint | number,
+  ): Promise<void> {
     try {
       const article = await this.prisma.articles.findUnique({
         where: { id: BigInt(articleId) },
@@ -1013,18 +1294,21 @@ has_offer: article.has_offer ? 1 : 0,
     if (!url) return null;
     if (url.startsWith('http')) return url;
 
-    const baseUrl = this.configService.get('APP_URL') || 'http://192.168.18.26:3000';
+    const baseUrl =
+      this.configService.get('APP_URL') || 'http://192.168.18.26:3000';
     return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
   }
 
   private formatBuildImageUrl(url: string | null): string | null {
     return this.formatImageUrl(url);
   }
-  
+
   async stocksArticles(id: number) {
     const numericId = Number(id);
     if (!Number.isFinite(numericId) || numericId <= 0) {
-      throw new BadRequestException('article_id es requerido y debe ser un número válido');
+      throw new BadRequestException(
+        'article_id es requerido y debe ser un número válido',
+      );
     }
     // Si es combo, devolver saldo mínimo de sus componentes (cuánto combos se pueden armar)
     const combo = await this.prisma.build_pc_tabla.findUnique({
@@ -1034,9 +1318,12 @@ has_offer: article.has_offer ? 1 : 0,
     if (combo) {
       const articleIds = combo.build_detail_pc_tabla.map((d) => d.article_id);
       if (articleIds.length === 0) return { article_id: String(id), saldo: 0 };
-      const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})`;
+      const stockRows: any[] = await this.prisma
+        .$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})`;
       const stockMap = new Map<string, number>();
-      stockRows.forEach((r: any) => stockMap.set(String(r.article_id), Number(r.saldo)));
+      stockRows.forEach((r: any) =>
+        stockMap.set(String(r.article_id), Number(r.saldo)),
+      );
       // saldo del combo = mínimo de (saldo / quantity) entre componentes, floor
       let minSaldo: number | null = null;
       for (const d of combo.build_detail_pc_tabla) {
@@ -1046,9 +1333,8 @@ has_offer: article.has_offer ? 1 : 0,
       }
       return { article_id: String(id), saldo: minSaldo ?? 0 };
     }
-    const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id , saldo FROM v_article_stock_global WHERE article_id = ${BigInt(id)}`;
+    const stockRows: any[] = await this.prisma
+      .$queryRaw`SELECT article_id , saldo FROM v_article_stock_global WHERE article_id = ${BigInt(id)}`;
     return stockRows[0] ?? { article_id: String(id), saldo: 0 };
   }
-
 }
- 

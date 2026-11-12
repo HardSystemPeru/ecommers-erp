@@ -40,22 +40,26 @@ export class ArticleResponseDto {
   @Expose() type!: string;
   @Expose() id!: number;
   @Expose() description!: string;
-  
+
   @Expose()
   @Transform(({ obj }) => obj.description || obj.name)
   name!: string;
-  
+
   @Expose() cod_fab!: string;
 
   @Expose()
-  @Transform(({ value }) => (value !== undefined && value !== null ? Number(value) : null))
+  @Transform(({ value }) =>
+    value !== undefined && value !== null ? Number(value) : null,
+  )
   public_price!: number;
 
   @Expose()
   slug!: string;
 
   @Expose()
-  @Transform(({ value }) => (value !== undefined && value !== null ? parseFloat(value) : 0))
+  @Transform(({ value }) =>
+    value !== undefined && value !== null ? parseFloat(value) : 0,
+  )
   average_rating!: number;
 
   @Expose()
@@ -129,15 +133,21 @@ export class ArticleResponseDto {
   offer_price_percent!: number;
 
   @Expose()
-  @Transform(({ value }) => (value !== undefined && value !== null ? Number(value) : null))
+  @Transform(({ value }) =>
+    value !== undefined && value !== null ? Number(value) : null,
+  )
   precio_final!: number;
 
   @Expose()
-  @Transform(({ value }) => (value !== undefined && value !== null ? Number(value) : null))
+  @Transform(({ value }) =>
+    value !== undefined && value !== null ? Number(value) : null,
+  )
   precio_final_soles!: number;
 
   @Expose()
-  @Transform(({ value }) => (value !== undefined && value !== null ? Number(value) : null))
+  @Transform(({ value }) =>
+    value !== undefined && value !== null ? Number(value) : null,
+  )
   precio_final_dolares!: number;
 
   @Expose()

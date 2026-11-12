@@ -10,7 +10,7 @@ export class CategoriesService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
-  ) { }
+  ) {}
 
   private formatImageUrl(url: string | null): string | null {
     if (!url) return null;
@@ -31,7 +31,8 @@ export class CategoriesService {
       .replace(/\|/g, ' ')
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
-    const truncated = base.length <= 50 ? base : base.slice(0, 50).replace(/-[^-]*$/, '');
+    const truncated =
+      base.length <= 50 ? base : base.slice(0, 50).replace(/-[^-]*$/, '');
     return `${truncated}-${id}`;
   }
 
@@ -42,16 +43,25 @@ export class CategoriesService {
   // alternativa usando slugify lib manteniendo compat con articulos
   private generateSlugWithLib(name: string, id: number | bigint): string {
     const base = slugify(name, { lower: true, strict: true });
-    const truncated = base.length <= 50 ? base : base.slice(0, 50).replace(/-[^-]*$/, '');
+    const truncated =
+      base.length <= 50 ? base : base.slice(0, 50).replace(/-[^-]*$/, '');
     return `${truncated}-${id}`;
   }
 
   private async getValidSubCategoryIds(): Promise<bigint[]> {
-    const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
+    const stockRows: any[] = await this.prisma
+      .$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
     const inStockIds = stockRows.map((r) => BigInt(r.article_id));
     if (inStockIds.length === 0) return [];
     const articles = await this.prisma.articles.findMany({
-      where: { status: 1, venta: true, habilitado_web: true, slug: { not: null }, sub_category_id: { not: null }, id: { in: inStockIds } },
+      where: {
+        status: 1,
+        venta: true,
+        habilitado_web: true,
+        slug: { not: null },
+        sub_category_id: { not: null },
+        id: { in: inStockIds },
+      },
       select: { sub_category_id: true },
     });
     const ids = [...new Set(articles.map((a) => a.sub_category_id))];
@@ -59,7 +69,8 @@ export class CategoriesService {
   }
 
   private async getInStockIds(): Promise<bigint[] | null> {
-    const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
+    const stockRows: any[] = await this.prisma
+      .$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
     const ids = stockRows.map((r) => BigInt(r.article_id));
     return ids;
   }
@@ -82,7 +93,7 @@ export class CategoriesService {
     });
 
     // Generar slug estable tipo "notebook-17" (mismo criterio que articulos)
-    const slug = this.generateCategorySlug(category.name!, Number(category.id));
+    const slug = this.generateCategorySlug(category.name, Number(category.id));
     const updated = await this.prisma.categories.update({
       where: { id: category.id },
       data: { slug },
@@ -115,14 +126,23 @@ export class CategoriesService {
     }
 
     const finalData: any = {};
-    if (updateCategoryDto.name !== undefined) finalData.name = updateCategoryDto.name;
-    if ((updateCategoryDto as any).st_concept !== undefined) finalData.st_concept = (updateCategoryDto as any).st_concept;
-    if ((updateCategoryDto as any).status !== undefined) finalData.status = (updateCategoryDto as any).status;
+    if (updateCategoryDto.name !== undefined)
+      finalData.name = updateCategoryDto.name;
+    if ((updateCategoryDto as any).st_concept !== undefined)
+      finalData.st_concept = (updateCategoryDto as any).st_concept;
+    if ((updateCategoryDto as any).status !== undefined)
+      finalData.status = (updateCategoryDto as any).status;
     // slug: si viene explícito usarlo, si cambia nombre generarlo, si no mantener existente
     if ((updateCategoryDto as any).slug !== undefined) {
       finalData.slug = (updateCategoryDto as any).slug || null;
-    } else if (updateCategoryDto.name && updateCategoryDto.name !== existing.name) {
-      finalData.slug = this.generateCategorySlug(updateCategoryDto.name, Number(categoryId));
+    } else if (
+      updateCategoryDto.name &&
+      updateCategoryDto.name !== existing.name
+    ) {
+      finalData.slug = this.generateCategorySlug(
+        updateCategoryDto.name,
+        Number(categoryId),
+      );
     }
     if (imageUrl !== undefined) finalData.image_url = imageUrl;
 
@@ -173,7 +193,17 @@ export class CategoriesService {
 
     const where: any = {
       status: 1,
-      articles: { some: { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) } },
+      articles: {
+        some: {
+          status: 1,
+          venta: true,
+          habilitado_web: true,
+          slug: { not: null },
+          ...(inStockIds && inStockIds.length > 0
+            ? { id: { in: inStockIds } }
+            : {}),
+        },
+      },
       // sub_categories: { some: { id: { in: validSubIds } } },
     };
 
@@ -217,12 +247,30 @@ export class CategoriesService {
     const validSubIds = await this.getValidSubCategoryIds();
     const inStockIds = await this.getInStockIds();
     if (inStockIds && inStockIds.length === 0) {
-      return { data: [], meta: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 } };
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: 0,
+        },
+      };
     }
 
     const where: any = {
       status: 1,
-      articles: { some: { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) } },
+      articles: {
+        some: {
+          status: 1,
+          venta: true,
+          habilitado_web: true,
+          slug: { not: null },
+          ...(inStockIds && inStockIds.length > 0
+            ? { id: { in: inStockIds } }
+            : {}),
+        },
+      },
       // sub_categories: { some: { id: { in: validSubIds } } },
     };
 
@@ -279,12 +327,31 @@ export class CategoriesService {
     const validSubIds = await this.getValidSubCategoryIds();
     const inStockIds = await this.getInStockIds();
     if (inStockIds && inStockIds.length === 0) {
-      return { data: [], meta: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0, hasNextPage: false } };
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: 0,
+          hasNextPage: false,
+        },
+      };
     }
 
     const where: any = {
       status: 1,
-      articles: { some: { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) } },
+      articles: {
+        some: {
+          status: 1,
+          venta: true,
+          habilitado_web: true,
+          slug: { not: null },
+          ...(inStockIds && inStockIds.length > 0
+            ? { id: { in: inStockIds } }
+            : {}),
+        },
+      },
       sub_categories: { some: { id: { in: validSubIds } } },
     };
 
@@ -339,7 +406,7 @@ export class CategoriesService {
         id: { in: validSubIds },
       },
     });
-     console.log(id)
+    console.log(id);
     return subCategories.map((sub) => ({
       ...sub,
       id: sub.id.toString(),

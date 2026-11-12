@@ -25,7 +25,20 @@ import { CsrfGuard } from './csrf/csrf.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, BruteForceService, BruteForceInterceptor, TokenRevocationService, CsrfGuard],
-  exports: [AuthService, JwtStrategy, PassportModule, BruteForceService, TokenRevocationService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    BruteForceService,
+    BruteForceInterceptor,
+    TokenRevocationService,
+    CsrfGuard,
+  ],
+  exports: [
+    AuthService,
+    JwtStrategy,
+    PassportModule,
+    BruteForceService,
+    TokenRevocationService,
+  ],
 })
 export class AuthModule {}

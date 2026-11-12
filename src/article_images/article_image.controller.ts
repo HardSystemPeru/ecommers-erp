@@ -38,7 +38,9 @@ export class ArticleImageController {
       fileFilter: (req, file, cb) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|webp|avif)$/)) {
           return cb(
-            new BadRequestException('Solo se permiten imágenes (jpg, jpeg, png, gif, webp)'),
+            new BadRequestException(
+              'Solo se permiten imágenes (jpg, jpeg, png, gif, webp)',
+            ),
             false,
           );
         }
@@ -77,52 +79,51 @@ export class ArticleImageController {
   findOne(@Param('id') id: string) {
     return this.articleImageService.findOne(id);
   }
-@Patch('set-main/:id')
-@UseGuards(AuthGuard('jwt'), AdminGuard)
-setMain(@Param('id') id: string) {
-  return this.articleImageService.setMain(id);
-}
+  @Patch('set-main/:id')
+  @UseGuards(AuthGuard('jwt'), AdminGuard)
+  setMain(@Param('id') id: string) {
+    return this.articleImageService.setMain(id);
+  }
 
-
-
-@Patch(':id')
-@UseGuards(AuthGuard('jwt'), AdminGuard)
-@UseFilters(AllExceptionsFilter)
-@UseInterceptors(
-  FileInterceptor('image', {
-    limits: {
-      fileSize: 2*1024 * 1024,
-    },
-    fileFilter: (req, file, cb) => {
-      if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|webp)$/)) {
-        return cb(
-          new BadRequestException('Solo se permiten imágenes (jpg, jpeg, png, gif, webp)'),
-          false,
-        );
-      }
-      cb(null, true);
-    },
-    storage: diskStorage({
-      destination: './storage/articles',
-      filename: (req, file, cb) => {
-        const randomName = Array(32)
-          .fill(null)
-          .map(() => Math.round(Math.random() * 16).toString(16))
-          .join('');
-
-        cb(null, `${randomName}${extname(file.originalname)}`);
+  @Patch(':id')
+  @UseGuards(AuthGuard('jwt'), AdminGuard)
+  @UseFilters(AllExceptionsFilter)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: {
+        fileSize: 2 * 1024 * 1024,
       },
-    }),
-  }),
-)
-update(
-  @Param('id') id: string,
-  @UploadedFile() file: Express.Multer.File,
-  @Body() updateArticleImageDto: UpdateArticleImageDto,
-) {
-  return this.articleImageService.update(id, updateArticleImageDto, file);
-}
+      fileFilter: (req, file, cb) => {
+        if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|webp)$/)) {
+          return cb(
+            new BadRequestException(
+              'Solo se permiten imágenes (jpg, jpeg, png, gif, webp)',
+            ),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      storage: diskStorage({
+        destination: './storage/articles',
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
 
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+    }),
+  )
+  update(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() updateArticleImageDto: UpdateArticleImageDto,
+  ) {
+    return this.articleImageService.update(id, updateArticleImageDto, file);
+  }
 
   @Delete(':id')
   @UseGuards(AuthGuard('jwt'), AdminGuard)

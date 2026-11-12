@@ -1,12 +1,23 @@
-import { BadRequestException, ConflictException, Injectable, RequestTimeoutException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  RequestTimeoutException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 
 @Injectable()
 export class ClientsService {
-  constructor(private readonly prisma: PrismaService,private readonly httpService: HttpService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly httpService: HttpService,
+  ) {}
 
-  private stripPassword<T extends { password?: any }>(client: T | null): T | null {
+  private stripPassword<T extends { password?: any }>(
+    client: T | null,
+  ): T | null {
     if (!client) return client;
     const { password, ...safe } = client as any;
     return safe as T;
@@ -67,7 +78,9 @@ export class ClientsService {
   }
 
   async findByGoogleId(googleId: string) {
-    const client = await this.prisma.clients.findUnique({ where: { google_id: googleId } });
+    const client = await this.prisma.clients.findUnique({
+      where: { google_id: googleId },
+    });
     return this.stripPassword(client) as any;
   }
 
@@ -115,25 +128,24 @@ export class ClientsService {
   async findOne(id: number) {
     const data = await this.prisma.clients.findUnique({ where: { id } });
     if (!data) return null;
-    
-    let unatVerified =false
-   try {
-        const response = await this.httpService.axiosRef.get(
+
+    let unatVerified = false;
+    try {
+      const response = await this.httpService.axiosRef.get(
         `${process.env.EXTERNAL_API_URL}/${data?.document_number}`,
         {
           headers: {
             Authorization: `Bearer ${process.env.PUBLICTOKEN}`,
           },
         },
-        
       );
       unatVerified = response?.data?.success ?? false;
-   } catch (error) {
-          console.log(error);
-   }
+    } catch (error) {
+      console.log(error);
+    }
 
     const { password, ...safe } = data as any;
-    return { ...safe, id: data.id.toString(), sunat_verfied:unatVerified }
+    return { ...safe, id: data.id.toString(), sunat_verfied: unatVerified };
   }
 
   async update(id: number, data: any) {
@@ -145,19 +157,22 @@ export class ClientsService {
     return { ...safe, id: updated.id.toString() };
   }
 
-  async consultaEditarClientSunat(user:any,data:any){
-    
-    const { id,email,name } = user
-    const { document_number, phone, address, ...rest } = data; 
-    
+  async consultaEditarClientSunat(user: any, data: any) {
+    const { id, email, name } = user;
+    const { document_number, phone, address, ...rest } = data;
 
-    const consultaClient = await this.findOne(id)
+    const consultaClient = await this.findOne(id);
 
-        if ( document_number == undefined  ) throw new RequestTimeoutException(`Tiene que registrarse con un DNI valido ${name}`)
-        if ( document_number?.length !== 8 ) throw new UnauthorizedException(`el DNI debe tener 8 numeros ${name}`)
-        if ( consultaClient?.document_number ) throw new ConflictException(`Ya estas registrado ${name}`)
-        try {
-        const response = await this.httpService.axiosRef.get(
+    if (document_number == undefined)
+      throw new RequestTimeoutException(
+        `Tiene que registrarse con un DNI valido ${name}`,
+      );
+    if (document_number?.length !== 8)
+      throw new UnauthorizedException(`el DNI debe tener 8 numeros ${name}`);
+    if (consultaClient?.document_number)
+      throw new ConflictException(`Ya estas registrado ${name}`);
+    try {
+      const response = await this.httpService.axiosRef.get(
         `${process.env.EXTERNAL_API_URL}/${document_number}`,
         {
           headers: {
@@ -166,27 +181,26 @@ export class ClientsService {
         },
       );
       // console.log(response?.data)
-    if (!response?.data?.success) throw new ConflictException(`Este numero de DNI no es valido`)
+      if (!response?.data?.success)
+        throw new ConflictException(`Este numero de DNI no es valido`);
 
-    const editarClient = await this.prisma.clients.update({
-      where:{ id },
-       data:{document_number:response?.data.data?.document_number}
-    })
-    const { password, ...data } = editarClient
+      const editarClient = await this.prisma.clients.update({
+        where: { id },
+        data: { document_number: response?.data.data?.document_number },
+      });
+      const { password, ...data } = editarClient;
 
-    return {...data, sunat_verfied:response?.data?.success};
+      return { ...data, sunat_verfied: response?.data?.success };
       // return response.data;
     } catch (error) {
       throw new BadRequestException('Este numero de DNI no es valido');
     }
-    
-   }
+  }
 
-   async findById(id:number){
-      const client = await this.prisma.clients.findUnique({
-        where: {id:id}
-      })
-      return this.stripPassword(client) as any;
-   }
-
+  async findById(id: number) {
+    const client = await this.prisma.clients.findUnique({
+      where: { id: id },
+    });
+    return this.stripPassword(client) as any;
+  }
 }

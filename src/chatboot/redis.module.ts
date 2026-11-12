@@ -9,7 +9,8 @@ import { createClient } from 'redis';
       provide: 'REDIS_CLIENT',
       useFactory: async (configService: ConfigService) => {
         const client = createClient({
-          url: configService.get<string>('REDIS_URL') || 'redis://127.0.0.1:6379',
+          url:
+            configService.get<string>('REDIS_URL') || 'redis://127.0.0.1:6379',
         });
         client.on('error', (err) =>
           console.error('[Redis] client error:', err?.message || err),

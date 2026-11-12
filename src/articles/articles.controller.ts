@@ -21,9 +21,9 @@ export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
 
   @Get('stocks-articles')
-stocks(@Query('article_id') article_id:number){
-    return this.articlesService.stocksArticles(article_id)
-}
+  stocks(@Query('article_id') article_id: number) {
+    return this.articlesService.stocksArticles(article_id);
+  }
 
   @Serialize(ArticleResponseDto)
   @Get()
@@ -84,19 +84,17 @@ stocks(@Query('article_id') article_id:number){
   }
 
   @Serialize(ArticleResponseDto)
-@Get(':id')
-findOne(@Param('id') id: string) {
-  if (!id || id === 'null' || id === 'undefined') {
-    throw new NotFoundException(`Identificador inválido: ${id}`);
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    if (!id || id === 'null' || id === 'undefined') {
+      throw new NotFoundException(`Identificador inválido: ${id}`);
+    }
+
+    const numId = Number(id);
+    if (!isNaN(numId)) {
+      return this.articlesService.findOne(numId);
+    }
+
+    return this.articlesService.findBySlug(id);
   }
-
-  const numId = Number(id);
-  if (!isNaN(numId)) {
-    return this.articlesService.findOne(numId);
-  }
-
-  return this.articlesService.findBySlug(id);
-}
-
-
 }

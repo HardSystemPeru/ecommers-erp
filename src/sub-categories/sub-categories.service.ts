@@ -3,10 +3,11 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class SubCategoriesService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   private async getInStockIds(): Promise<bigint[] | null> {
-    const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
+    const stockRows: any[] = await this.prisma
+      .$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
     return stockRows.map((r) => BigInt(r.article_id));
   }
 
@@ -17,13 +18,23 @@ export class SubCategoriesService {
 
     const where: any = {
       status: 1,
-      articles: { some: { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) } }
+      articles: {
+        some: {
+          status: 1,
+          venta: true,
+          habilitado_web: true,
+          slug: { not: null },
+          ...(inStockIds && inStockIds.length > 0
+            ? { id: { in: inStockIds } }
+            : {}),
+        },
+      },
     };
 
     if (categoryId) {
       where.category_id = BigInt(categoryId);
     }
-    
+
     if (search) {
       where.name = { contains: search };
     }
@@ -51,12 +62,25 @@ export class SubCategoriesService {
     const skip = (page - 1) * limit;
     const inStockIds = await this.getInStockIds();
     if (inStockIds && inStockIds.length === 0) {
-      return { data: [], meta: { total: 0, page, limit, totalPages: 0, hasNextPage: false } };
+      return {
+        data: [],
+        meta: { total: 0, page, limit, totalPages: 0, hasNextPage: false },
+      };
     }
 
-    const where: any = { 
+    const where: any = {
       status: 1,
-      articles: { some: { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) } }
+      articles: {
+        some: {
+          status: 1,
+          venta: true,
+          habilitado_web: true,
+          slug: { not: null },
+          ...(inStockIds && inStockIds.length > 0
+            ? { id: { in: inStockIds } }
+            : {}),
+        },
+      },
     };
 
     if (categoryId) {
@@ -103,12 +127,30 @@ export class SubCategoriesService {
     const take = Number(limit);
     const inStockIds = await this.getInStockIds();
     if (inStockIds && inStockIds.length === 0) {
-      return { data: [], meta: { total: 0, page: Number(page), limit: Number(limit), lastPage: 0 } };
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page: Number(page),
+          limit: Number(limit),
+          lastPage: 0,
+        },
+      };
     }
 
-    const where: any = { 
+    const where: any = {
       status: 1,
-      articles: { some: { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) } }
+      articles: {
+        some: {
+          status: 1,
+          venta: true,
+          habilitado_web: true,
+          slug: { not: null },
+          ...(inStockIds && inStockIds.length > 0
+            ? { id: { in: inStockIds } }
+            : {}),
+        },
+      },
     };
 
     if (categoryId) {
@@ -143,28 +185,28 @@ export class SubCategoriesService {
       },
     };
   }
-async uploadImage(id: string, file: Express.Multer.File) {
-  const subCategory = await this.prisma.sub_categories.findUnique({
-    where: { id: BigInt(id) },
-  });
+  async uploadImage(id: string, file: Express.Multer.File) {
+    const subCategory = await this.prisma.sub_categories.findUnique({
+      where: { id: BigInt(id) },
+    });
 
-  if (!subCategory) {
-    throw new NotFoundException('Subcategoria no encontrada');
-  }
+    if (!subCategory) {
+      throw new NotFoundException('Subcategoria no encontrada');
+    }
 
-  const baseUrl = process.env.APP_URL;
-  const imageUrl = `${baseUrl}/storage/sub-categories/${file.filename}`;
+    const baseUrl = process.env.APP_URL;
+    const imageUrl = `${baseUrl}/storage/sub-categories/${file.filename}`;
 
-  await this.prisma.sub_categories.update({
-    where: { id: BigInt(id) },
-    data: {
+    await this.prisma.sub_categories.update({
+      where: { id: BigInt(id) },
+      data: {
+        image_url: imageUrl,
+      },
+    });
+
+    return {
+      message: 'Imagen subida exitosamente',
       image_url: imageUrl,
-    },
-  });
-
-  return {
-    message: 'Imagen subida exitosamente',
-    image_url: imageUrl,
-  };
-}
+    };
+  }
 }

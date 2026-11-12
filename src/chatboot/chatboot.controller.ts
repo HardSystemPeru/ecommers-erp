@@ -1,21 +1,30 @@
-import { Controller, Post, Body, Query, Get, Param, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Query,
+  Get,
+  Param,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { Chat } from './chat.service'; 
+import { Chat } from './chat.service';
 
 @Controller('chatboot')
 export class ChatbootController {
-  constructor(
-    private readonly chatService: Chat,) {}
+  constructor(private readonly chatService: Chat) {}
 
   @Get('ver-mas/:consultaId')
-  async consult(@Param('consultaId') consultaId: string, @Query('pagina', ParseIntPipe) pagina: number,){
-    return this.chatService.verMas(consultaId,pagina)
+  async consult(
+    @Param('consultaId') consultaId: string,
+    @Query('pagina', ParseIntPipe) pagina: number,
+  ) {
+    return this.chatService.verMas(consultaId, pagina);
   }
 
   @Post()
-  @Throttle({ default: { limit: 30, ttl: 60000 } }) 
-  async chat( @Body('message') message: string, ) {
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  async chat(@Body('message') message: string) {
     return this.chatService.buscarArticulos(message || '');
   }
-
 }

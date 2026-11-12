@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Query, UploadedFile, UseFilters, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Query,
+  UploadedFile,
+  UseFilters,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { SubCategoriesService } from './sub-categories.service';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -51,32 +62,31 @@ export class SubCategoriesController {
     });
   }
   //subir imagenes a subcategoria existentes
-@Patch('upload-image/:id')
-@UseGuards(AuthGuard('jwt'), AdminGuard)
+  @Patch('upload-image/:id')
+  @UseGuards(AuthGuard('jwt'), AdminGuard)
   @UseFilters(AllExceptionsFilter)
-@UseInterceptors(
-  FileInterceptor('image', {
-    limits: {
-      fileSize: 2 * 1024 * 1024, // 5mb
-    },
-    storage: diskStorage({
-      destination: './storage/sub-categories',
-      filename: (req, file, cb) => {
-        const randomName = Array(32)
-          .fill(null)
-          .map(() => Math.round(Math.random() * 16).toString(16))
-          .join('');
-
-        cb(null, `${randomName}${extname(file.originalname)}`);
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: {
+        fileSize: 2 * 1024 * 1024, // 5mb
       },
-    }),
-  }),
-)
-uploadImage(
-  @Param('id') id: string,
-  @UploadedFile() file: Express.Multer.File,
-) {
-  return this.subCategoriesService.uploadImage(id, file);
-}
+      storage: diskStorage({
+        destination: './storage/sub-categories',
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
 
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+    }),
+  )
+  uploadImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.subCategoriesService.uploadImage(id, file);
+  }
 }

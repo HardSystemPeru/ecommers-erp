@@ -24,34 +24,46 @@ export class HeroSliderService {
     return `${baseUrl}${url}`;
   }
 
-  async create(createHeroSliderDto: CreateHeroSliderDto, file?: Express.Multer.File) {
+  async create(
+    createHeroSliderDto: CreateHeroSliderDto,
+    file?: Express.Multer.File,
+  ) {
     let imageUrl = '';
     if (file) {
       imageUrl = `/storage/hero-slider/${file.filename}`;
     }
     const lastSlide = await this.prisma.hero_slides.findFirst({
       orderBy: { orden: 'desc' },
-      select: { orden: true, name:true },
+      select: { orden: true, name: true },
     });
 
-      const selectName:any[] =  await this.prisma.$queryRaw`
+    const selectName: any[] = await this.prisma.$queryRaw`
          SELECT name, orden FROM hero_slides WHERE name = ${createHeroSliderDto.name}
          ORDER BY orden ASC
- `;   
-      
-       const nextOrden = selectName ? selectName?.[selectName.length - 1]?.orden + 1 : 0;
-     
-      const slide = await this.prisma.hero_slides.create({
+ `;
+
+    const nextOrden = selectName
+      ? selectName?.[selectName.length - 1]?.orden + 1
+      : 0;
+
+    const slide = await this.prisma.hero_slides.create({
       data: {
         title: createHeroSliderDto.title,
         subtitle: createHeroSliderDto.subtitle,
         image: imageUrl,
         link: createHeroSliderDto.link || null,
-        orden: createHeroSliderDto.order !== undefined ? Number(createHeroSliderDto.order) : (Number(nextOrden) || 0),
+        orden:
+          createHeroSliderDto.order !== undefined
+            ? Number(createHeroSliderDto.order)
+            : Number(nextOrden) || 0,
         active: createHeroSliderDto.active !== false,
-        name: createHeroSliderDto.name || "",
-        category_id: createHeroSliderDto.category_id ? BigInt(createHeroSliderDto.category_id) : null,
-        sub_category_id: createHeroSliderDto.sub_category_id ? BigInt(createHeroSliderDto.sub_category_id) : null,
+        name: createHeroSliderDto.name || '',
+        category_id: createHeroSliderDto.category_id
+          ? BigInt(createHeroSliderDto.category_id)
+          : null,
+        sub_category_id: createHeroSliderDto.sub_category_id
+          ? BigInt(createHeroSliderDto.sub_category_id)
+          : null,
       },
     });
 
@@ -64,64 +76,69 @@ export class HeroSliderService {
     };
   }
 
-async findAll(params: { search?: string, orden?: string, category_id?: string, sub_category_id?: string }) {
-  const { search, orden, category_id, sub_category_id } = params;
+  async findAll(params: {
+    search?: string;
+    orden?: string;
+    category_id?: string;
+    sub_category_id?: string;
+  }) {
+    const { search, orden, category_id, sub_category_id } = params;
 
-  const where: any = {};
+    const where: any = {};
 
-  if (search) {
-    where.name = { contains: search };
-  }
-
-  if (orden) {
-    where.orden = Number(orden);
-  }
-
-  if (category_id !== undefined) {
-    where.category_id = category_id ? BigInt(category_id) : null;
-  }
-  if (sub_category_id !== undefined) {
-    where.sub_category_id = sub_category_id ? BigInt(sub_category_id) : null;
-  }
-
-  // Se eliminó el filtro forzoso de category_id = null para que el listado
-  // traiga todos los slides (incluidos los que tienen categoría), y el frontend
-  // pueda filtrar por categoría si lo desea. Sin filtro, se devuelven todos.
-  const slides = await this.prisma.hero_slides.findMany({
-    where,
-    orderBy: { orden: 'asc' },
-    select: {
-      id: true,
-      name: true,
-      image: true,
-      subtitle: true,
-      title: true,
-      orden: true,
-      active: true,
-      link: true,
-      category_id: true,
-      sub_category_id: true,
+    if (search) {
+      where.name = { contains: search };
     }
-  });
 
-  const formatted = slides.map((slide) => ({
-    ...slide,
-    id: slide.id.toString(),
-    category_id: slide.category_id?.toString() ?? null,
-    sub_category_id: slide.sub_category_id?.toString() ?? null,
-    image: this.formatImageUrl(slide.image),
-  }));
+    if (orden) {
+      where.orden = Number(orden);
+    }
 
-  if (search === 'carrusel') {
-    return formatted;
+    if (category_id !== undefined) {
+      where.category_id = category_id ? BigInt(category_id) : null;
+    }
+    if (sub_category_id !== undefined) {
+      where.sub_category_id = sub_category_id ? BigInt(sub_category_id) : null;
+    }
+
+    // Se eliminó el filtro forzoso de category_id = null para que el listado
+    // traiga todos los slides (incluidos los que tienen categoría), y el frontend
+    // pueda filtrar por categoría si lo desea. Sin filtro, se devuelven todos.
+    const slides = await this.prisma.hero_slides.findMany({
+      where,
+      orderBy: { orden: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        image: true,
+        subtitle: true,
+        title: true,
+        orden: true,
+        active: true,
+        link: true,
+        category_id: true,
+        sub_category_id: true,
+      },
+    });
+
+    const formatted = slides.map((slide) => ({
+      ...slide,
+      id: slide.id.toString(),
+      category_id: slide.category_id?.toString() ?? null,
+      sub_category_id: slide.sub_category_id?.toString() ?? null,
+      image: this.formatImageUrl(slide.image),
+    }));
+
+    if (search === 'carrusel') {
+      return formatted;
+    }
+
+    if (search === 'side') {
+      return formatted;
+    }
+
+    return formatted[0] ?? null;
   }
-
-  if (search === 'side') {
-    return formatted;
-  }
-
-  return formatted[0] ?? null;
-}
 
   async findOne(id: string) {
     const slide = await this.prisma.hero_slides.findUnique({
@@ -141,7 +158,11 @@ async findAll(params: { search?: string, orden?: string, category_id?: string, s
     };
   }
 
-  async update(id: string, updateHeroSliderDto: UpdateHeroSliderDto, file?: Express.Multer.File) {
+  async update(
+    id: string,
+    updateHeroSliderDto: UpdateHeroSliderDto,
+    file?: Express.Multer.File,
+  ) {
     const slideId = BigInt(id);
     const existing = await this.prisma.hero_slides.findUnique({
       where: { id: slideId },
@@ -171,14 +192,42 @@ async findAll(params: { search?: string, orden?: string, category_id?: string, s
     const slide = await this.prisma.hero_slides.update({
       where: { id: slideId },
       data: {
-        title: updateHeroSliderDto.title !== undefined ? updateHeroSliderDto.title : existing.title,
-        subtitle: updateHeroSliderDto.subtitle !== undefined ? updateHeroSliderDto.subtitle : existing.subtitle,
-        link: updateHeroSliderDto.link !== undefined ? updateHeroSliderDto.link : existing.link,
-        orden: updateHeroSliderDto.order !== undefined ? Number(updateHeroSliderDto.order) : existing.orden,
-        active: updateHeroSliderDto.active !== undefined ? updateHeroSliderDto.active : existing.active,
-        name: updateHeroSliderDto.name !== undefined ? updateHeroSliderDto.name : existing.name,
-        category_id: updateHeroSliderDto.category_id !== undefined ? (updateHeroSliderDto.category_id ? BigInt(updateHeroSliderDto.category_id) : null) : (existing as any).category_id,
-        sub_category_id: updateHeroSliderDto.sub_category_id !== undefined ? (updateHeroSliderDto.sub_category_id ? BigInt(updateHeroSliderDto.sub_category_id) : null) : (existing as any).sub_category_id,
+        title:
+          updateHeroSliderDto.title !== undefined
+            ? updateHeroSliderDto.title
+            : existing.title,
+        subtitle:
+          updateHeroSliderDto.subtitle !== undefined
+            ? updateHeroSliderDto.subtitle
+            : existing.subtitle,
+        link:
+          updateHeroSliderDto.link !== undefined
+            ? updateHeroSliderDto.link
+            : existing.link,
+        orden:
+          updateHeroSliderDto.order !== undefined
+            ? Number(updateHeroSliderDto.order)
+            : existing.orden,
+        active:
+          updateHeroSliderDto.active !== undefined
+            ? updateHeroSliderDto.active
+            : existing.active,
+        name:
+          updateHeroSliderDto.name !== undefined
+            ? updateHeroSliderDto.name
+            : existing.name,
+        category_id:
+          updateHeroSliderDto.category_id !== undefined
+            ? updateHeroSliderDto.category_id
+              ? BigInt(updateHeroSliderDto.category_id)
+              : null
+            : (existing as any).category_id,
+        sub_category_id:
+          updateHeroSliderDto.sub_category_id !== undefined
+            ? updateHeroSliderDto.sub_category_id
+              ? BigInt(updateHeroSliderDto.sub_category_id)
+              : null
+            : (existing as any).sub_category_id,
         image: imageUrl,
       },
     });
@@ -194,7 +243,7 @@ async findAll(params: { search?: string, orden?: string, category_id?: string, s
 
   async remove(id: string) {
     const slideId = BigInt(id);
-    
+
     // First find the slide to get the image path
     const slide = await this.prisma.hero_slides.findUnique({
       where: { id: slideId },

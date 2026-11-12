@@ -2906,11 +2906,14 @@ model orders {
 
   clients clients @relation(fields: [client_id],references: [id], onDelete: Cascade, onUpdate: Restrict, map: "orders_client_id_foreign")
   document_types document_types? @relation(fields: [document_type_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map:"orders_document_type_id_foreign")
+  tipo_cambio      Decimal?       @default(0.00) @db.Decimal(5, 2)
+  payment_method_id BigInt?        @db.UnsignedBigInt
+  currency_types_id BigInt?        @db.UnsignedBigInt
 
   @@index([client_id], map: "orders_client_id_foreign")
-  @@index([document_type_id], map: "orders_document_type_id_foreign")
-  @@index([sale_id], map: "orders_sale_id_index")
-} 
+  @@index([document_type_id], map: "orders_sale_id_index")
+  @@index([payment_method_id], map: "orders_payment_method_id_fk")
+}
 
 model RefreshToken {
   id           String @id @default(uuid())

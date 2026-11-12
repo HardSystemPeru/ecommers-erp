@@ -64,7 +64,7 @@ export class AuthService {
         document_number: dto.document_number,
         password: hashedPassword,
       });
-    } catch (error:any) {
+    } catch (error: any) {
       if (error.code === 'P2002') {
         throw new ConflictException('El correo ya está registrado');
       }
@@ -86,9 +86,9 @@ export class AuthService {
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, client.password);
-    if (!isPasswordValid) { 
+    if (!isPasswordValid) {
       throw new UnauthorizedException('Credenciales inválidas');
-    } 
+    }
 
     return this.generateAuthResponseLogin(client, meta);
   }
@@ -171,7 +171,9 @@ export class AuthService {
         },
       );
     } catch {
-      throw new BadRequestException('No se pudo validar el documento en este momento');
+      throw new BadRequestException(
+        'No se pudo validar el documento en este momento',
+      );
     }
 
     if (response.status === 404) {
@@ -223,7 +225,11 @@ export class AuthService {
   }
 
   // ─── Login Admin ─────────────────────────────────────────────────────────
-  async loginAdminUpdateImage(username: string, password: string, meta?: AuthMetadata) {
+  async loginAdminUpdateImage(
+    username: string,
+    password: string,
+    meta?: AuthMetadata,
+  ) {
     const client = await this.prisma.clients.findFirst({
       where: {
         OR: [{ email: username }, { names: username }],
@@ -315,7 +321,9 @@ export class AuthService {
       },
     });
 
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://192.168.18.35:3000/';
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ||
+      'http://192.168.18.35:3000/';
     const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
     const smtpUser = this.configService.get<string>('SMTP_USER');
 
@@ -343,7 +351,8 @@ export class AuthService {
     }
 
     return {
-      message: 'Se ha enviado un correo con las instrucciones para restablecer la contraseña',
+      message:
+        'Se ha enviado un correo con las instrucciones para restablecer la contraseña',
     };
   }
 
@@ -391,64 +400,66 @@ export class AuthService {
     });
   }
   // En el service
-async refreshAccessToken(refreshToken: string, meta?: AuthMetadata) {
-  const hashedToken = createHash('sha256').update(refreshToken).digest('hex');
+  async refreshAccessToken(refreshToken: string, meta?: AuthMetadata) {
+    const hashedToken = createHash('sha256').update(refreshToken).digest('hex');
 
-  const stored = await this.prisma.refreshToken.findUnique({
-    where: { hashedToken },
-  });
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { hashedToken },
+    });
 
-  if (!stored || stored.revoked || stored.expiresAt < new Date()) {
-    throw new UnauthorizedException('Refresh token inválido o expirado');
+    if (!stored || stored.revoked || stored.expiresAt < new Date()) {
+      throw new UnauthorizedException('Refresh token inválido o expirado');
+    }
+
+    const client = await this.clientsService.findById(Number(stored.clientId));
+    if (!client) {
+      throw new UnauthorizedException('Cliente no encontrado');
+    }
+
+    // Generar nuevo access token
+    const clientId = client.id.toString();
+    const username = `${client.names || ''} ${client.lastnames || ''}`.trim();
+    const accessToken = this.jwtService.sign({
+      sub: clientId,
+      email: client.email,
+      username,
+      jti: randomUUID(),
+    });
+
+    // Rotar el refresh token (recomendado por seguridad)
+    const newRefreshToken = randomBytes(64).toString('hex');
+    const newHashedToken = createHash('sha256')
+      .update(newRefreshToken)
+      .digest('hex');
+    const newExpiresAt = new Date();
+    newExpiresAt.setDate(newExpiresAt.getDate() + 7);
+
+    const newTokenRecord = await this.prisma.refreshToken.create({
+      data: {
+        clientId: client.id,
+        hashedToken: newHashedToken,
+        expiresAt: newExpiresAt,
+        ip: meta?.ip,
+        userAgent: meta?.userAgent,
+        deviceName: meta?.deviceName,
+      },
+    });
+
+    // Marcar el viejo como usado/reemplazado
+    await this.prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: {
+        revoked: true,
+        revokedReason: 'rotated',
+        lastUsedAt: new Date(),
+        replacedById: newTokenRecord.id,
+      },
+    });
+
+    return {
+      accessToken,
+      refreshToken: newRefreshToken,
+      user: { id: clientId, username, email: client.email },
+    };
   }
-
-  const client = await this.clientsService.findById(Number(stored.clientId));
-  if (!client) {
-    throw new UnauthorizedException('Cliente no encontrado');
-  }
-
-  // Generar nuevo access token
-  const clientId = client.id.toString();
-  const username = `${client.names || ''} ${client.lastnames || ''}`.trim();
-  const accessToken = this.jwtService.sign({
-    sub: clientId,
-    email: client.email,
-    username,
-    jti: randomUUID(),
-  });
-
-  // Rotar el refresh token (recomendado por seguridad)
-  const newRefreshToken = randomBytes(64).toString('hex');
-  const newHashedToken = createHash('sha256').update(newRefreshToken).digest('hex');
-  const newExpiresAt = new Date();
-  newExpiresAt.setDate(newExpiresAt.getDate() + 7);
-
-  const newTokenRecord = await this.prisma.refreshToken.create({
-    data: {
-      clientId: client.id,
-      hashedToken: newHashedToken,
-      expiresAt: newExpiresAt,
-      ip: meta?.ip,
-      userAgent: meta?.userAgent,
-      deviceName: meta?.deviceName,
-    },
-  });
-
-  // Marcar el viejo como usado/reemplazado
-  await this.prisma.refreshToken.update({
-    where: { id: stored.id },
-    data: {
-      revoked: true,
-      revokedReason: 'rotated',
-      lastUsedAt: new Date(),
-      replacedById: newTokenRecord.id,
-    },
-  });
-
-  return {
-    accessToken,
-    refreshToken: newRefreshToken,
-    user: { id: clientId, username, email: client.email },
-  };
-}
 }

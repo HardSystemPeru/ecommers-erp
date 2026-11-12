@@ -7,7 +7,6 @@ import { AllExceptionsFilter } from './filter/all-exceptions.filter';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-
 (BigInt.prototype as any).toJSON = function () {
   return this.toString();
 };
@@ -51,4 +50,4 @@ async function bootstrap() {
   await app.listen(process.env.PORT || 3000, '0.0.0.0');
 }
 
-bootstrap(); 
+bootstrap();

@@ -5,7 +5,7 @@ import { HttpModule } from '@nestjs/axios';
 
 @Global()
 @Module({
-  imports:[HttpModule],
+  imports: [HttpModule],
   controllers: [ClientsController],
   providers: [ClientsService],
   exports: [ClientsService],

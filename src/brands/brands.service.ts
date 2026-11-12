@@ -106,7 +106,8 @@ export class BrandsService {
   }
 
   private async getInStockIds(): Promise<bigint[] | null> {
-    const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
+    const stockRows: any[] = await this.prisma
+      .$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
     return stockRows.map((r) => BigInt(r.article_id));
   }
 
@@ -115,9 +116,19 @@ export class BrandsService {
     const inStockIds = await this.getInStockIds();
     if (inStockIds && inStockIds.length === 0) return [];
 
-    const where: any = { 
+    const where: any = {
       status: 1,
-      articles: { some: { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) } }
+      articles: {
+        some: {
+          status: 1,
+          venta: true,
+          habilitado_web: true,
+          slug: { not: null },
+          ...(inStockIds && inStockIds.length > 0
+            ? { id: { in: inStockIds } }
+            : {}),
+        },
+      },
     };
 
     if (search) {
@@ -145,12 +156,30 @@ export class BrandsService {
     const take = Number(limit);
     const inStockIds = await this.getInStockIds();
     if (inStockIds && inStockIds.length === 0) {
-      return { data: [], meta: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 } };
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: 0,
+        },
+      };
     }
 
-    const where: any = { 
+    const where: any = {
       status: 1,
-      articles: { some: { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) } }
+      articles: {
+        some: {
+          status: 1,
+          venta: true,
+          habilitado_web: true,
+          slug: { not: null },
+          ...(inStockIds && inStockIds.length > 0
+            ? { id: { in: inStockIds } }
+            : {}),
+        },
+      },
     };
 
     if (search) {
@@ -192,12 +221,31 @@ export class BrandsService {
     const take = Number(limit);
     const inStockIds = await this.getInStockIds();
     if (inStockIds && inStockIds.length === 0) {
-      return { data: [], meta: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0, hasNextPage: false } };
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: 0,
+          hasNextPage: false,
+        },
+      };
     }
 
-    const where: any = { 
+    const where: any = {
       status: 1,
-      articles: { some: { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) } }
+      articles: {
+        some: {
+          status: 1,
+          venta: true,
+          habilitado_web: true,
+          slug: { not: null },
+          ...(inStockIds && inStockIds.length > 0
+            ? { id: { in: inStockIds } }
+            : {}),
+        },
+      },
     };
 
     if (search) {

@@ -6,7 +6,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { calcComboTotals, priceComboLine } from '../articles/utils/combo-price.util';
+import {
+  calcComboTotals,
+  priceComboLine,
+} from '../articles/utils/combo-price.util';
 
 @Injectable()
 export class CartService {
@@ -44,10 +47,9 @@ export class CartService {
       user_id: article.user_id?.toString(),
       precio_public_soles: article.public_price
         ? parseFloat(
-            (
-              article.currency_type_id?.toString() === '1'
-                ? Number(article.public_price)
-                : Number(article.public_price) * dollarRate
+            (article.currency_type_id?.toString() === '1'
+              ? Number(article.public_price)
+              : Number(article.public_price) * dollarRate
             ).toFixed(2),
           )
         : null,
@@ -61,7 +63,9 @@ export class CartService {
             ).toFixed(2),
           )
         : null,
-      public_price: article.public_price ? parseFloat(article.public_price.toString()) : null,
+      public_price: article.public_price
+        ? parseFloat(article.public_price.toString())
+        : null,
       article_images: (article.article_images || []).map((img: any) => ({
         ...img,
         id: img.id?.toString(),
@@ -81,15 +85,24 @@ export class CartService {
     if (!combo) return null;
     // Precios desde artículos (igual que ArticlesService) — evita total_price 0
     // y saldo desde v_article_stock_global para que el frontend sepa stock por componente
-    const articleIds = (combo.build_detail_pc_tabla || []).map((d: any) => d.articles.id);
+    const articleIds = (combo.build_detail_pc_tabla || []).map(
+      (d: any) => d.articles.id,
+    );
     const { Prisma } = await import('@prisma/client');
-    const stockRows: any[] = articleIds.length ? await this.prisma.$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})` : [];
+    const stockRows: any[] = articleIds.length
+      ? await this.prisma
+          .$queryRaw`SELECT article_id, saldo FROM v_article_stock_global WHERE article_id IN (${Prisma.join(articleIds)})`
+      : [];
     const stockMap = new Map<string, number>();
-    stockRows.forEach((r: any) => stockMap.set(String(r.article_id), Number(r.saldo)));
+    stockRows.forEach((r: any) =>
+      stockMap.set(String(r.article_id), Number(r.saldo)),
+    );
     const details = combo.build_detail_pc_tabla || [];
     const items = details.map((detail: any) => {
       const art = detail.articles;
-      const publicPrice = art.public_price ? parseFloat(art.public_price.toString()) : null;
+      const publicPrice = art.public_price
+        ? parseFloat(art.public_price.toString())
+        : null;
       const currencyStr = art.currency_type_id?.toString();
       const line = priceComboLine(art, dollarRate);
       return {
@@ -102,7 +115,10 @@ export class CartService {
         public_price: publicPrice,
         public_price_soles: publicPrice
           ? parseFloat(
-              (currencyStr === '1' ? publicPrice : publicPrice * dollarRate).toFixed(2),
+              (currencyStr === '1'
+                ? publicPrice
+                : publicPrice * dollarRate
+              ).toFixed(2),
             )
           : null,
         public_price_dolares: publicPrice
@@ -115,7 +131,8 @@ export class CartService {
               ).toFixed(2),
             )
           : null,
-        precio_final: art.precio_final != null ? Number(art.precio_final) : null,
+        precio_final:
+          art.precio_final != null ? Number(art.precio_final) : null,
         has_offer: art.has_offer ? 1 : 0,
         offer_price_percent: Number(art.offer_price_percent || 0),
         effective_price: line.effective_price,
@@ -125,7 +142,9 @@ export class CartService {
         category: art.categories
           ? { id: art.categories.id.toString(), name: art.categories.name }
           : null,
-        brand: art.brands ? { id: art.brands.id.toString(), name: art.brands.name } : null,
+        brand: art.brands
+          ? { id: art.brands.id.toString(), name: art.brands.name }
+          : null,
         article_images: (art.article_images || []).map((img: any) => ({
           id: img.id.toString(),
           url: this.formatImageUrl(img.url),
@@ -157,7 +176,8 @@ export class CartService {
   private formatImageUrl(url: string | null): string | null {
     if (!url) return null;
     if (url.startsWith('http')) return url;
-    const baseUrl = this.configService.get('APP_URL') || 'http://192.168.18.26:3000';
+    const baseUrl =
+      this.configService.get('APP_URL') || 'http://192.168.18.26:3000';
     return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
   }
 
@@ -211,7 +231,9 @@ export class CartService {
       orderBy: { created_at: 'desc' },
     });
     const dollarRate = await this.getDollarRate();
-    const result = await Promise.all(rows.map((r) => this.buildCartResponse(r, dollarRate)));
+    const result = await Promise.all(
+      rows.map((r) => this.buildCartResponse(r, dollarRate)),
+    );
     return result;
   }
 
@@ -290,11 +312,14 @@ export class CartService {
     cartId: string,
     quantity: number,
   ) {
-    if (!quantity || quantity < 1) throw new BadRequestException('quantity debe ser >= 1');
+    if (!quantity || quantity < 1)
+      throw new BadRequestException('quantity debe ser >= 1');
 
     let row: any;
     try {
-      row = await this.prisma.cart.findUnique({ where: { id: BigInt(cartId) } });
+      row = await this.prisma.cart.findUnique({
+        where: { id: BigInt(cartId) },
+      });
     } catch {
       throw new BadRequestException('ID de carrito inválido');
     }
@@ -314,7 +339,9 @@ export class CartService {
   async removeFromCart(clientId: number | string, cartId: string) {
     let row: any;
     try {
-      row = await this.prisma.cart.findUnique({ where: { id: BigInt(cartId) } });
+      row = await this.prisma.cart.findUnique({
+        where: { id: BigInt(cartId) },
+      });
     } catch {
       throw new BadRequestException('ID de carrito inválido');
     }

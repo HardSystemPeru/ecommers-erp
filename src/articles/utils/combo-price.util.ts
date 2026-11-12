@@ -39,19 +39,28 @@ export function getEffectiveNativePrice(art: ComboArticleLike): number | null {
   if (pub === null) return null;
 
   const offerPct = Number(art?.offer_price_percent || 0);
-  const hasOffer = art?.has_offer === true || art?.has_offer === 1 || offerPct > 0;
+  const hasOffer =
+    art?.has_offer === true || art?.has_offer === 1 || offerPct > 0;
   if (hasOffer && offerPct > 0) return pub * (1 - offerPct / 100);
 
   return pub;
 }
 
-function convertNativeToSoles(native: number, currencyStr: string | undefined, dollarRate: number): number | null {
+function convertNativeToSoles(
+  native: number,
+  currencyStr: string | undefined,
+  dollarRate: number,
+): number | null {
   if (currencyStr === '1') return native;
   if (dollarRate > 0) return native * dollarRate;
   return null; // sin tipo de cambio no se puede convertir: null honesto, no 0
 }
 
-function convertNativeToDolares(native: number, currencyStr: string | undefined, dollarRate: number): number | null {
+function convertNativeToDolares(
+  native: number,
+  currencyStr: string | undefined,
+  dollarRate: number,
+): number | null {
   if (currencyStr === '2') return native;
   if (dollarRate > 0) return native / dollarRate;
   return null;
@@ -66,10 +75,17 @@ export interface ComboLinePrice {
   effective_price_dolares: number | null;
 }
 
-export function priceComboLine(art: ComboArticleLike, dollarRate: number): ComboLinePrice {
+export function priceComboLine(
+  art: ComboArticleLike,
+  dollarRate: number,
+): ComboLinePrice {
   const effective = getEffectiveNativePrice(art);
   if (effective === null) {
-    return { effective_price: null, effective_price_soles: null, effective_price_dolares: null };
+    return {
+      effective_price: null,
+      effective_price_soles: null,
+      effective_price_dolares: null,
+    };
   }
   const currencyStr = art?.currency_type_id?.toString();
   const soles = convertNativeToSoles(effective, currencyStr, dollarRate);
@@ -100,7 +116,10 @@ export function calcComboTotals(
   legacyTotalPrice?: unknown,
 ): ComboTotals {
   if (!details || details.length === 0) {
-    return { total_price: toNumberOrNull(legacyTotalPrice), total_price_soles: toNumberOrNull(legacyTotalPrice) };
+    return {
+      total_price: toNumberOrNull(legacyTotalPrice),
+      total_price_soles: toNumberOrNull(legacyTotalPrice),
+    };
   }
 
   let accDolares = 0;

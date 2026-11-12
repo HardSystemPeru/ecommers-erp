@@ -8,10 +8,65 @@
  * Usado por chat.service.ts y chatboot.service.ts para que singular/plural filtren igual.
  */
 
-export const variantGroups: string[][] = [['adaptador', 'adaptadores'], ['audifono', 'audifonos'], ['bateria', 'baterias'], ['cable', 'cables'], ['camara', 'camaras'], ['cartucho', 'cartuchos'], ['case', 'cases'], ['cooler', 'coolers'], ['cpu', 'cpus'], ['disco', 'discos'], ['disipador', 'disipadores'], ['estabilizador', 'estabilizadores'], ['fuente', 'fuentes'], ['gaming', 'gaminges'], ['impresora', 'impresoras'], ['laptop', 'laptops'], ['madre', 'madres'], ['memoria', 'memorias'], ['microfono', 'microfonos'], ['monitor', 'monitores'], ['mouse', 'mouses'], ['notebook', 'notebooks'], ['pantalla', 'pantallas'], ['parlante', 'parlantes'], ['pasta', 'pastas'], ['placa', 'placas'], ['poder', 'poderes'], ['portatil', 'portatiles'], ['procesador', 'procesadores'], ['ram', 'rams'], ['router', 'routers'], ['solido', 'solidos'], ['ssd', 'ssds'], ['switch', 'switchs'], ['tarjeta', 'tarjetas'], ['teclado', 'teclados'], ['termica', 'termicas'], ['tinta', 'tintas'], ['video', 'videos'], ['computadora', 'computadoras', 'computador', 'computadores', 'pc', 'pcs', 'desktop', 'desktops']];
+export const variantGroups: string[][] = [
+  ['adaptador', 'adaptadores'],
+  ['audifono', 'audifonos'],
+  ['bateria', 'baterias'],
+  ['cable', 'cables'],
+  ['camara', 'camaras'],
+  ['cartucho', 'cartuchos'],
+  ['case', 'cases'],
+  ['cooler', 'coolers'],
+  ['cpu', 'cpus'],
+  ['disco', 'discos'],
+  ['disipador', 'disipadores'],
+  ['estabilizador', 'estabilizadores'],
+  ['fuente', 'fuentes'],
+  ['gaming', 'gaminges'],
+  ['impresora', 'impresoras'],
+  ['laptop', 'laptops'],
+  ['madre', 'madres'],
+  ['memoria', 'memorias'],
+  ['microfono', 'microfonos'],
+  ['monitor', 'monitores'],
+  ['mouse', 'mouses'],
+  ['notebook', 'notebooks'],
+  ['pantalla', 'pantallas'],
+  ['parlante', 'parlantes'],
+  ['pasta', 'pastas'],
+  ['placa', 'placas'],
+  ['poder', 'poderes'],
+  ['portatil', 'portatiles'],
+  ['procesador', 'procesadores'],
+  ['ram', 'rams'],
+  ['router', 'routers'],
+  ['solido', 'solidos'],
+  ['ssd', 'ssds'],
+  ['switch', 'switchs'],
+  ['tarjeta', 'tarjetas'],
+  ['teclado', 'teclados'],
+  ['termica', 'termicas'],
+  ['tinta', 'tintas'],
+  ['video', 'videos'],
+  [
+    'computadora',
+    'computadoras',
+    'computador',
+    'computadores',
+    'pc',
+    'pcs',
+    'desktop',
+    'desktops',
+  ],
+];
 
 function normalizeKey(s: string): string {
-  return s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+  return s
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
 }
 
 const tokenToGroup = new Map<string, string[]>();
@@ -24,29 +79,29 @@ for (const group of variantGroups) {
 // Alias de sinónimos basados en co-ocurrencia real en articles.description (no inventados)
 // Solo se añaden si ambas palabras aparecen en la tabla articles
 const synonymAliases: Record<string, string[]> = {
-  "ram": ["memoria", "memorias", "rams"],
-  "memoria": ["ram", "rams", "memorias"],
-  "procesador": ["procesadores", "cpu", "cpus"],
-  "placa": ["placas"],
-  "tarjeta": ["tarjetas"],
-  "disco": ["discos", "ssd", "ssds"],
-  "fuente": ["fuentes"],
-  "cooler": ["coolers", "ventilador", "ventiladores"],
-  "ventilador": ["ventiladores", "cooler", "coolers"],
-  "teclado": ["teclados"],
-  "mouse": ["mouses", "raton", "ratones"],
-  "monitor": ["monitores", "pantalla", "pantallas"],
-  "pantalla": ["pantallas", "monitor", "monitores"],
-  "laptop": ["laptops", "notebook", "notebooks", "portatil", "portatiles"],
-  "computadora": ["computadoras", "pc", "pcs"],
-  "audifono": ["audifonos", "auricular", "auriculares"],
-  "parlante": ["parlantes"],
-  "camara": ["camaras", "webcam", "webcams"],
-  "microfono": ["microfonos"],
-  "impresora": ["impresoras"],
-  "router": ["routers"],
-  "cable": ["cables"],
-  "adaptador": ["adaptadores"],
+  ram: ['memoria', 'memorias', 'rams'],
+  memoria: ['ram', 'rams', 'memorias'],
+  procesador: ['procesadores', 'cpu', 'cpus'],
+  placa: ['placas'],
+  tarjeta: ['tarjetas'],
+  disco: ['discos', 'ssd', 'ssds'],
+  fuente: ['fuentes'],
+  cooler: ['coolers', 'ventilador', 'ventiladores'],
+  ventilador: ['ventiladores', 'cooler', 'coolers'],
+  teclado: ['teclados'],
+  mouse: ['mouses', 'raton', 'ratones'],
+  monitor: ['monitores', 'pantalla', 'pantallas'],
+  pantalla: ['pantallas', 'monitor', 'monitores'],
+  laptop: ['laptops', 'notebook', 'notebooks', 'portatil', 'portatiles'],
+  computadora: ['computadoras', 'pc', 'pcs'],
+  audifono: ['audifonos', 'auricular', 'auriculares'],
+  parlante: ['parlantes'],
+  camara: ['camaras', 'webcam', 'webcams'],
+  microfono: ['microfonos'],
+  impresora: ['impresoras'],
+  router: ['routers'],
+  cable: ['cables'],
+  adaptador: ['adaptadores'],
 };
 // Aplicar alias solo si el grupo base existe (es palabra real)
 for (const [key, aliases] of Object.entries(synonymAliases)) {
@@ -105,5 +160,5 @@ export function expandTokens(tokens: string[]): string[] {
 
 export const synonymMap: Record<string, string[]> = {};
 for (const [key, group] of tokenToGroup.entries()) {
-  synonymMap[key] = group.filter(g => normalizeKey(g) !== key);
+  synonymMap[key] = group.filter((g) => normalizeKey(g) !== key);
 }

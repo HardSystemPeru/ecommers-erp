@@ -31,10 +31,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     // 👇 Capturar el 413 que viene como objeto plano (no HttpException)
-    if (
-      exception instanceof Error &&
-      (exception as any).status === 413
-    ) {
+    if (exception instanceof Error && (exception as any).status === 413) {
       return response.status(400).json({
         statusCode: 400,
         timestamp: new Date().toISOString(),
@@ -44,10 +41,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     // 👇 Capturar HttpException con status 413
-    if (
-      exception instanceof HttpException &&
-      exception.getStatus() === 413
-    ) {
+    if (exception instanceof HttpException && exception.getStatus() === 413) {
       return response.status(400).json({
         statusCode: 400,
         timestamp: new Date().toISOString(),

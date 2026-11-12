@@ -1,17 +1,23 @@
-import { BadGatewayException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-
+import {
+  BadGatewayException,
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 @Injectable()
 export class ConsultaService {
-        private readonly sunatUrl = process.env.EXTERNAL_API_URL ;
-         private readonly token = process.env.EXTERNAL_API_TOKEN ?? '';
+  private readonly sunatUrl = process.env.EXTERNAL_API_URL;
+  private readonly token = process.env.EXTERNAL_API_TOKEN ?? '';
 
   async consultarRuc(ruc: string) {
     if (!/^\d{11}$/.test(ruc)) {
-      throw new BadRequestException('El RUC debe tener exactamente 11 dígitos numéricos');
+      throw new BadRequestException(
+        'El RUC debe tener exactamente 11 dígitos numéricos',
+      );
     }
     const d = await this.fetch(`${this.sunatUrl}/${ruc}`, 'SUNAT');
-  
+
     return {
       ruc: d.ruc ?? ruc,
       razon_social: d.razsoc ?? d.razonSocial ?? '',
@@ -35,17 +41,21 @@ export class ConsultaService {
         headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
       });
     } catch {
-      throw new BadGatewayException(`No se pudo conectar con el servicio ${origen}`);
+      throw new BadGatewayException(
+        `No se pudo conectar con el servicio ${origen}`,
+      );
     }
 
     if (res.status === 404) {
       throw new NotFoundException(`Registro no encontrado en ${origen}`);
     }
     if (!res.ok) {
-      throw new BadGatewayException(`El servicio ${origen} respondió con error ${res.status}`);
+      throw new BadGatewayException(
+        `El servicio ${origen} respondió con error ${res.status}`,
+      );
     }
 
-    const json = (await res.json()) as any;
+    const json = await res.json();
     return json.data ?? json;
   }
 }

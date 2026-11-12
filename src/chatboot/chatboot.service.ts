@@ -4,26 +4,61 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 
-
 @Injectable()
 export class ChatbootService {
   private groq: Groq;
 
   // Cache de consultas para paginación sin gastar tokens (almacena search_params)
-  private queryCache = new Map<string, { params: any; isPcBuild: boolean; createdAt: number }>();
+  private queryCache = new Map<
+    string,
+    { params: any; isPcBuild: boolean; createdAt: number }
+  >();
   private readonly ITEMS_PER_PAGE = 5;
   private readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutos
-  private readonly stopWords = ['muestrame', 'muéstrame', 'quiero', 'ver', 'busco', 'en', 'de', 'las', 'los', 'un', 'una', 'con', 'para', 'que', 'ofertas', 'oferta', 'descuento', 'barato', 'precio'];
-  private readonly pcKeywords = ['computadora', 'computador', 'computadoras', 'pc', 'gaming', 'gamer', 'escritorio', 'desktop', 'armada', 'armado', 'pre-armado', 'arma'];
+  private readonly stopWords = [
+    'muestrame',
+    'muéstrame',
+    'quiero',
+    'ver',
+    'busco',
+    'en',
+    'de',
+    'las',
+    'los',
+    'un',
+    'una',
+    'con',
+    'para',
+    'que',
+    'ofertas',
+    'oferta',
+    'descuento',
+    'barato',
+    'precio',
+  ];
+  private readonly pcKeywords = [
+    'computadora',
+    'computador',
+    'computadoras',
+    'pc',
+    'gaming',
+    'gamer',
+    'escritorio',
+    'desktop',
+    'armada',
+    'armado',
+    'pre-armado',
+    'arma',
+  ];
 
-  constructor( 
+  constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
   ) {
     const apiKey = this.configService.get<string>('GROQ_API_KEY');
 
     this.groq = new Groq({
-      apiKey: apiKey
+      apiKey: apiKey,
     });
 
     // Limpiar cache expirado cada 5 minutos
@@ -35,14 +70,18 @@ export class ChatbootService {
    */
   async chat(userMessage: string) {
     console.log('=== CHATBOT: Nueva consulta ===');
-  //  return this.findProducts({ page:1, limit:615 })
+    //  return this.findProducts({ page:1, limit:615 })
     // Pre-validaciones rápidas para evitar consumo innecesario de tokens
-    const cleanMsg = (userMessage || '').toLowerCase().trim().replace(/[?¡!.,]/g, '');
+    const cleanMsg = (userMessage || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[?¡!.,]/g, '');
 
     // 1. Mensaje vacío o demasiado corto
     if (!cleanMsg || cleanMsg.length < 3) {
       return {
-        message: '¡Hola! ¿En qué puedo ayudarte hoy con los productos de nuestra tienda? Puedes preguntarme por laptops, teclados, componentes y más.',
+        message:
+          '¡Hola! ¿En qué puedo ayudarte hoy con los productos de nuestra tienda? Puedes preguntarme por laptops, teclados, componentes y más.',
         type: 'product_list',
         data: [],
         meta: {
@@ -50,15 +89,26 @@ export class ChatbootService {
           hasMore: false,
           nextCursor: null,
           queryId: null,
-        }
+        },
       };
     }
 
     // 2. Saludos sencillos y directos
-    const simpleGreetings = ['hola', 'buenos dias', 'buenas tardes', 'buenas noches', 'buenas', 'hello', 'hi', 'buen dia', 'buendia'];
+    const simpleGreetings = [
+      'hola',
+      'buenos dias',
+      'buenas tardes',
+      'buenas noches',
+      'buenas',
+      'hello',
+      'hi',
+      'buen dia',
+      'buendia',
+    ];
     if (simpleGreetings.includes(cleanMsg)) {
       return {
-        message: '¡Hola! ¿En qué puedo ayudarte hoy con los productos de nuestra tienda?',
+        message:
+          '¡Hola! ¿En qué puedo ayudarte hoy con los productos de nuestra tienda?',
         type: 'product_list',
         data: [],
         meta: {
@@ -66,15 +116,20 @@ export class ChatbootService {
           hasMore: false,
           nextCursor: null,
           queryId: null,
-        }
+        },
       };
     }
 
     // 3. Palabra única sin vocales (posible spam o incoherencia)
     const words = cleanMsg.split(/\s+/);
-    if (words.length === 1 && words[0].length >= 5 && !/[aeiouáéíóúü]/.test(words[0])) {
+    if (
+      words.length === 1 &&
+      words[0].length >= 5 &&
+      !/[aeiouáéíóúü]/.test(words[0])
+    ) {
       return {
-        message: 'Lo siento, no he podido entender tu mensaje. ¿Podrías escribir tu consulta de forma más clara? Puedo ayudarte a buscar laptops, componentes de PC, impresoras y más.',
+        message:
+          'Lo siento, no he podido entender tu mensaje. ¿Podrías escribir tu consulta de forma más clara? Puedo ayudarte a buscar laptops, componentes de PC, impresoras y más.',
         type: 'product_list',
         data: [],
         meta: {
@@ -82,15 +137,21 @@ export class ChatbootService {
           hasMore: false,
           nextCursor: null,
           queryId: null,
-        }
+        },
       };
     }
 
     // 1. Obtener filtros de marcas, categorías y PC builds activas
     const { categories, brands, pcBuilds } = await this.getAvailableFilters();
-    const categoriesList = categories.map(c => `ID: ${c.id} - Nombre: ${c.name}`).join('\n');
-    const brandsList = brands.map(b => `ID: ${b.id} - Nombre: ${b.name}`).join('\n');
-    const pcBuildsList = pcBuilds.map(p => `ID: ${p.id} - Nombre: ${p.name}`).join('\n');
+    const categoriesList = categories
+      .map((c) => `ID: ${c.id} - Nombre: ${c.name}`)
+      .join('\n');
+    const brandsList = brands
+      .map((b) => `ID: ${b.id} - Nombre: ${b.name}`)
+      .join('\n');
+    const pcBuildsList = pcBuilds
+      .map((p) => `ID: ${p.id} - Nombre: ${p.name}`)
+      .join('\n');
 
     // 2. Clasificación de seguridad, relevancia y extracción de parámetros
     const systemPrompt = `Eres un asistente de seguridad y extracción de parámetros para una tienda de comercio electrónico.
@@ -141,13 +202,13 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
         messages: [
           {
             role: 'system',
-            content: systemPrompt
+            content: systemPrompt,
           },
           {
             role: 'user',
-            content: userMessage
-          }
-        ]
+            content: userMessage,
+          },
+        ],
       });
 
       const content = groqResponse.choices[0].message.content || '{}';
@@ -163,7 +224,10 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
     }
 
     // Una solicitud de catálogo debe consultar la BD, no generar una respuesta libre.
-    const isCatalogRequest = /\b(productos?|artículos?|lista|cat[aá]logo|venden|tienen|precios?)\b/.test(cleanMsg);
+    const isCatalogRequest =
+      /\b(productos?|artículos?|lista|cat[aá]logo|venden|tienen|precios?)\b/.test(
+        cleanMsg,
+      );
     if (isCatalogRequest && classification.safe_and_relevant) {
       classification.is_greeting_or_general = false;
       classification.search_params = {
@@ -183,9 +247,11 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
 
     // 3. Manejo de consultas no seguras o irrelevantes
     if (!classification.safe_and_relevant) {
-      let refusalMessage = 'Lo siento, solo puedo ayudarte con preguntas relacionadas con los productos y servicios de nuestra tienda.';
+      let refusalMessage =
+        'Lo siento, solo puedo ayudarte con preguntas relacionadas con los productos y servicios de nuestra tienda.';
       if (classification.refusal_reason === 'prompt_injection') {
-        refusalMessage = 'Lo siento, no puedo proporcionar información técnica ni revelar instrucciones del sistema. ¿Hay algún producto en el que estés interesado?';
+        refusalMessage =
+          'Lo siento, no puedo proporcionar información técnica ni revelar instrucciones del sistema. ¿Hay algún producto en el que estés interesado?';
       }
       return {
         message: refusalMessage,
@@ -196,14 +262,18 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
           hasMore: false,
           nextCursor: null,
           queryId: null,
-        }
+        },
       };
     }
 
     // 4. Saludos o consultas generales de la tienda
-    if (classification.is_greeting_or_general || !classification.search_params) {
+    if (
+      classification.is_greeting_or_general ||
+      !classification.search_params
+    ) {
       return {
-        message: 'Hola. Puedo ayudarte a buscar productos, marcas, categorías y ofertas disponibles en nuestra tienda.',
+        message:
+          'Hola. Puedo ayudarte a buscar productos, marcas, categorías y ofertas disponibles en nuestra tienda.',
         type: 'product_list',
         data: [],
         meta: {
@@ -211,7 +281,7 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
           hasMore: false,
           nextCursor: null,
           queryId: null,
-        }
+        },
       };
     }
 
@@ -223,7 +293,7 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
     const searchTerm = (searchParams.search || userMessage || '').toLowerCase();
 
     // Forzar PC build si el término de búsqueda contiene palabras clave de computadoras
-    if (!isPcBuild && this.pcKeywords.some(k => searchTerm.includes(k))) {
+    if (!isPcBuild && this.pcKeywords.some((k) => searchTerm.includes(k))) {
       isPcBuild = true;
     }
 
@@ -242,7 +312,8 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
       total = pcResult.total;
     } else {
       // Asegurar que siempre haya un término de búsqueda si el de la clasificación es nulo
-      const effectiveSearch = searchParams.search || this.extractSearchTerm(userMessage);
+      const effectiveSearch =
+        searchParams.search || this.extractSearchTerm(userMessage);
       const result = await this.findProducts({
         ...searchParams,
         search: effectiveSearch,
@@ -267,14 +338,19 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
     let respuestaText = '';
     if (total === 0) {
       if (isPcBuild) {
-        respuestaText = 'Lo siento, por el momento no disponemos de configuraciones de PC armadas que coincidan con tu búsqueda. ¿Te gustaría consultar alguna otra opción?';
+        respuestaText =
+          'Lo siento, por el momento no disponemos de configuraciones de PC armadas que coincidan con tu búsqueda. ¿Te gustaría consultar alguna otra opción?';
       } else {
-        respuestaText = 'Lo siento, actualmente no disponemos de productos que coincidan exactamente con tu búsqueda en nuestra tienda. ¿Te gustaría buscar otra cosa?';
+        respuestaText =
+          'Lo siento, actualmente no disponemos de productos que coincidan exactamente con tu búsqueda en nuestra tienda. ¿Te gustaría buscar otra cosa?';
       }
     } else {
-      const examples = products.slice(0, 3).map((product) =>
-        `- ${product.nombre}: S/ ${Number(product.precio || 0).toFixed(2)}`,
-      );
+      const examples = products
+        .slice(0, 3)
+        .map(
+          (product) =>
+            `- ${product.nombre}: S/ ${Number(product.precio || 0).toFixed(2)}`,
+        );
       respuestaText = `Encontré ${total} producto(s) disponible(s) en nuestra tienda.`;
       if (examples.length > 0) {
         respuestaText += ` Algunos son:\n${examples.join('\n')}`;
@@ -288,9 +364,12 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
       meta: {
         total,
         hasMore: hayMas,
-        nextCursor: products.length > 0 ? products[products.length - 1].id.toString() : null,
+        nextCursor:
+          products.length > 0
+            ? products[products.length - 1].id.toString()
+            : null,
         queryId: hayMas ? consultaId : null,
-      }
+      },
     };
   }
 
@@ -352,7 +431,8 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
 
   private async getInStockIds(): Promise<bigint[] | null> {
     try {
-      const stockRows: any[] = await this.prisma.$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
+      const stockRows: any[] = await this.prisma
+        .$queryRaw`SELECT article_id FROM v_article_stock_global WHERE saldo > 0`;
       return stockRows.map((r) => BigInt(r.article_id));
     } catch {
       return null;
@@ -365,12 +445,30 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
   private async getAvailableFilters() {
     try {
       const inStockIds = await this.getInStockIds();
-      if (inStockIds && inStockIds.length === 0) return { categories: [], brands: [], pcBuilds: [] };
-      const visibleArticleFilter = { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) };
+      if (inStockIds && inStockIds.length === 0)
+        return { categories: [], brands: [], pcBuilds: [] };
+      const visibleArticleFilter = {
+        status: 1,
+        venta: true,
+        habilitado_web: true,
+        slug: { not: null },
+        ...(inStockIds && inStockIds.length > 0
+          ? { id: { in: inStockIds } }
+          : {}),
+      };
       const [categories, brands, pcBuilds] = await Promise.all([
-        this.prisma.categories.findMany({ where: { status: 1, articles: { some: visibleArticleFilter } }, select: { id: true, name: true } }),
-        this.prisma.brands.findMany({ where: { status: 1, articles: { some: visibleArticleFilter } }, select: { id: true, name: true } }),
-        this.prisma.build_pc_tabla.findMany({ where: { status: true }, select: { id: true, name: true } }),
+        this.prisma.categories.findMany({
+          where: { status: 1, articles: { some: visibleArticleFilter } },
+          select: { id: true, name: true },
+        }),
+        this.prisma.brands.findMany({
+          where: { status: 1, articles: { some: visibleArticleFilter } },
+          select: { id: true, name: true },
+        }),
+        this.prisma.build_pc_tabla.findMany({
+          where: { status: true },
+          select: { id: true, name: true },
+        }),
       ]);
       return { categories, brands, pcBuilds };
     } catch (e) {
@@ -413,7 +511,8 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
 
     // Filtro base visible: igual que categories/brands/sub-categories
     const inStockIds = await this.getInStockIds();
-    if (inStockIds && inStockIds.length === 0) return { products: [], total: 0 };
+    if (inStockIds && inStockIds.length === 0)
+      return { products: [], total: 0 };
 
     const synonymMap: Record<string, string[]> = {
       laptop: ['notebook', 'laptop', 'portatil', 'laptops', 'notebooks'],
@@ -435,7 +534,15 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
     };
 
     const buildBaseWhere = () => {
-      const w: any = { status: 1, venta: true, habilitado_web: true, slug: { not: null }, ...(inStockIds && inStockIds.length > 0 ? { id: { in: inStockIds } } : {}) };
+      const w: any = {
+        status: 1,
+        venta: true,
+        habilitado_web: true,
+        slug: { not: null },
+        ...(inStockIds && inStockIds.length > 0
+          ? { id: { in: inStockIds } }
+          : {}),
+      };
       if (categoryId) w.category_id = BigInt(categoryId);
       if (brandId) w.brand_id = BigInt(brandId);
       if (minPrice || maxPrice) {
@@ -467,27 +574,37 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
           include: {
             categories: true,
             brands: true,
-            article_images: { orderBy: [{ is_main: 'desc' }, { position: 'asc' }], take: 1 },
+            article_images: {
+              orderBy: [{ is_main: 'desc' }, { position: 'asc' }],
+              take: 1,
+            },
           },
         }),
         this.prisma.articles.count({ where: whereClause }),
         this.prisma.exchange_rates.findFirst({ orderBy: { date: 'desc' } }),
       ]);
 
-      const dollarRate = exchangeRate ? (Number(exchangeRate.parallel_rate) || Number((exchangeRate as any).sale_rate) || 0) : 0;
+      const dollarRate = exchangeRate
+        ? Number(exchangeRate.parallel_rate) ||
+          Number((exchangeRate as any).sale_rate) ||
+          0
+        : 0;
 
       const formattedProducts = articles.map((article: any) => {
-        const slug = article.slug
+        const slug = article.slug;
         const id = Number(article.id);
         const nombre = article.description || '';
         const mainImageObj = article.article_images?.[0];
         const rawImgUrl = mainImageObj ? mainImageObj.url : null;
-        const rawPrice = article.public_price ? Number(article.public_price) : 0;
+        const rawPrice = article.public_price
+          ? Number(article.public_price)
+          : 0;
         const isDollars = article.currency_type_id?.toString() === '2';
-        const precioSoles = isDollars && dollarRate > 0
-          ? Number((rawPrice * dollarRate).toFixed(2))
-          : Number(rawPrice.toFixed(2));
-    
+        const precioSoles =
+          isDollars && dollarRate > 0
+            ? Number((rawPrice * dollarRate).toFixed(2))
+            : Number(rawPrice.toFixed(2));
+
         return {
           id,
           nombre,
@@ -498,32 +615,38 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
           ruta: this.formatProductRoute(slug),
         };
       });
-      
+
       return { products: formattedProducts, total };
     };
 
     // ── Primer intento: búsqueda directa ──
     const term = search?.toLowerCase().trim() || '';
     const termsToSearch = term
-      ? Array.from(new Set([
-          term,
-          ...(synonymMap[term] || []),
-          ...(term.endsWith('s') && term.length > 3 ? [term.slice(0, -1)] : []),
-          ...(!term.endsWith('s') ? [term + 's'] : []),
-        ]))
+      ? Array.from(
+          new Set([
+            term,
+            ...(synonymMap[term] || []),
+            ...(term.endsWith('s') && term.length > 3
+              ? [term.slice(0, -1)]
+              : []),
+            ...(!term.endsWith('s') ? [term + 's'] : []),
+          ]),
+        )
       : [];
 
     const where = buildBaseWhere();
 
     if (term && termsToSearch.length > 0) {
-      where.AND = [{
-        OR: termsToSearch.flatMap((t) => [
-          { description: { contains: t } },
-          { cod_fab: { contains: t } },
-          { categories: { name: { contains: t } } },
-          { brands: { name: { contains: t } } },
-        ]),
-      }];
+      where.AND = [
+        {
+          OR: termsToSearch.flatMap((t) => [
+            { description: { contains: t } },
+            { cod_fab: { contains: t } },
+            { categories: { name: { contains: t } } },
+            { brands: { name: { contains: t } } },
+          ]),
+        },
+      ];
     }
 
     let result = await execQuery(where);
@@ -536,34 +659,54 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
 
     // ── Fallback por taxonomía si no hay resultados ──
     if (result.total === 0 && term && !categoryId && !brandId) {
-      const [matchedCategories, matchedBrands, matchedSubCategories] = await Promise.all([
-        this.prisma.categories.findMany({
-          where: { status: 1, OR: termsToSearch.map((t) => ({ name: { contains: t } })) },
-          select: { id: true },
-        }),
-        this.prisma.brands.findMany({
-          where: { status: 1, OR: termsToSearch.map((t) => ({ name: { contains: t } })) },
-          select: { id: true },
-        }),
-        this.prisma.sub_categories.findMany({
-          where: { status: 1, OR: termsToSearch.map((t) => ({ name: { contains: t } })) },
-          select: { id: true },
-        }),
-      ]);
+      const [matchedCategories, matchedBrands, matchedSubCategories] =
+        await Promise.all([
+          this.prisma.categories.findMany({
+            where: {
+              status: 1,
+              OR: termsToSearch.map((t) => ({ name: { contains: t } })),
+            },
+            select: { id: true },
+          }),
+          this.prisma.brands.findMany({
+            where: {
+              status: 1,
+              OR: termsToSearch.map((t) => ({ name: { contains: t } })),
+            },
+            select: { id: true },
+          }),
+          this.prisma.sub_categories.findMany({
+            where: {
+              status: 1,
+              OR: termsToSearch.map((t) => ({ name: { contains: t } })),
+            },
+            select: { id: true },
+          }),
+        ]);
 
       const categoryIds = matchedCategories.map((c) => BigInt(c.id));
       const brandIds = matchedBrands.map((b) => BigInt(b.id));
       const subCategoryIds = matchedSubCategories.map((s) => BigInt(s.id));
 
-      if (categoryIds.length > 0 || brandIds.length > 0 || subCategoryIds.length > 0) {
+      if (
+        categoryIds.length > 0 ||
+        brandIds.length > 0 ||
+        subCategoryIds.length > 0
+      ) {
         const fallbackWhere = buildBaseWhere();
-        fallbackWhere.AND = [{
-          OR: [
-            ...(categoryIds.length > 0 ? [{ category_id: { in: categoryIds } }] : []),
-            ...(brandIds.length > 0 ? [{ brand_id: { in: brandIds } }] : []),
-            ...(subCategoryIds.length > 0 ? [{ sub_category_id: { in: subCategoryIds } }] : []),
-          ],
-        }];
+        fallbackWhere.AND = [
+          {
+            OR: [
+              ...(categoryIds.length > 0
+                ? [{ category_id: { in: categoryIds } }]
+                : []),
+              ...(brandIds.length > 0 ? [{ brand_id: { in: brandIds } }] : []),
+              ...(subCategoryIds.length > 0
+                ? [{ sub_category_id: { in: subCategoryIds } }]
+                : []),
+            ],
+          },
+        ];
         result = await execQuery(fallbackWhere);
       }
     }
@@ -621,14 +764,20 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
       }),
     ]);
 
-    const dollarRate = exchangeRate ? (Number(exchangeRate.parallel_rate) || Number((exchangeRate as any).sale_rate) || 0) : 0;
+    const dollarRate = exchangeRate
+      ? Number(exchangeRate.parallel_rate) ||
+        Number((exchangeRate as any).sale_rate) ||
+        0
+      : 0;
 
     const formattedBuilds = builds.map((build: any) => {
       const rawPrice = Number(build.total_price) || 0;
-      const isDollars = build.companies?.default_currency_type_id?.toString() === '2';
-      const precioSoles = isDollars && dollarRate > 0
-        ? Number((rawPrice * dollarRate).toFixed(2))
-        : Number(rawPrice.toFixed(2));
+      const isDollars =
+        build.companies?.default_currency_type_id?.toString() === '2';
+      const precioSoles =
+        isDollars && dollarRate > 0
+          ? Number((rawPrice * dollarRate).toFixed(2))
+          : Number(rawPrice.toFixed(2));
 
       return {
         id: Number(build.id),
@@ -639,7 +788,9 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
         partes: build.build_detail_pc_tabla.map((det: any) => ({
           nombre: det.articles?.description || '',
           cantidad: det.quantity,
-          imagen: this.formatImageUrl(det.articles?.article_images?.[0]?.url || null),
+          imagen: this.formatImageUrl(
+            det.articles?.article_images?.[0]?.url || null,
+          ),
         })),
       };
     });
@@ -655,14 +806,21 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
     if (!search) return null;
     const words = search.toLowerCase().split(/\s+/);
     const significant = words.filter(
-      w => !this.stopWords.includes(w) && !this.pcKeywords.includes(w) && w.length > 1
+      (w) =>
+        !this.stopWords.includes(w) &&
+        !this.pcKeywords.includes(w) &&
+        w.length > 1,
     );
     return significant.length > 0 ? significant.join(' ') : null;
   }
 
   private formatProductRoute(slug: string): string {
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://192.168.18.35:3000/';
-    const cleanFrontendUrl = frontendUrl.endsWith('/') ? frontendUrl.slice(0, -1) : frontendUrl;
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ||
+      'http://192.168.18.35:3000/';
+    const cleanFrontendUrl = frontendUrl.endsWith('/')
+      ? frontendUrl.slice(0, -1)
+      : frontendUrl;
     return `${cleanFrontendUrl}/productos/${slug}`;
   }
 
@@ -692,16 +850,34 @@ NOTA: Cuando el usuario pregunte por PCs armados, computadoras, PC de escritorio
    */
   private extractSearchTerm(message: string): string {
     const stopwords = [
-      'necesito', 'quiero', 'traeme', 'muchos', 'muchas', 'para', 'con',
-      'del', 'que', 'deseo', 'tienes', 'tendras', 'muestrame',
+      'necesito',
+      'quiero',
+      'traeme',
+      'muchos',
+      'muchas',
+      'para',
+      'con',
+      'del',
+      'que',
+      'deseo',
+      'tienes',
+      'tendras',
+      'muestrame',
     ];
 
     const palabras = message
       .toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .split(/\s+/)
-      .filter(p => p.length > 2 && !stopwords.includes(p))
-      .map(p => p.endsWith('es') && p.length > 4 ? p.slice(0, -2) : p.endsWith('s') ? p.slice(0, -1) : p);
+      .filter((p) => p.length > 2 && !stopwords.includes(p))
+      .map((p) =>
+        p.endsWith('es') && p.length > 4
+          ? p.slice(0, -2)
+          : p.endsWith('s')
+            ? p.slice(0, -1)
+            : p,
+      );
 
     return palabras.length > 0 ? palabras[0] : '';
   }

@@ -28,10 +28,10 @@ export class HeroSliderController {
 
   @Post()
   @UseGuards(AuthGuard('jwt'), AdminGuard)
-    @UseFilters(AllExceptionsFilter)
+  @UseFilters(AllExceptionsFilter)
   @UseInterceptors(
     FileInterceptor('image', {
-       limits: {
+      limits: {
         fileSize: 2 * 1024 * 1024,
       },
       storage: diskStorage({
@@ -54,13 +54,18 @@ export class HeroSliderController {
   }
 
   @Get()
-  findAll( 
+  findAll(
     @Query('name') search?: string,
     @Query('orden') orden?: string,
     @Query('category_id') category_id?: string,
     @Query('sub_category_id') sub_category_id?: string,
   ) {
-    return this.heroSliderService.findAll({  search,orden, category_id, sub_category_id });
+    return this.heroSliderService.findAll({
+      search,
+      orden,
+      category_id,
+      sub_category_id,
+    });
   }
 
   @Get(':id')
