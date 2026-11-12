@@ -169,8 +169,7 @@ export class OrdersService {
               data: {
                 quantity: item.quantity,
                 unit_price: surchargePercent > 0 ? priceWithSurcharge : unit_price || 0,
-                subtotal: subtotal,
-
+                subtotal: subtotal, 
                 orders: {
                   connect: { id: orders.id },
                 },
