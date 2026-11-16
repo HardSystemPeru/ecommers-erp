@@ -50,6 +50,67 @@ export class OrdersService {
     return String(currencyTypeId) === '1' ? amount : amount * dollarRate;
   }
 
+  private toDolares(
+    value: unknown,
+    currencyTypeId: unknown,
+    dollarRate: number,
+  ): number {
+    const amount = Number(value) || 0;
+    return String(currencyTypeId) === '1'
+      ? dollarRate > 0
+        ? amount / dollarRate
+        : 0
+      : amount;
+  }
+
+  private normalizeOrderItems(
+    items: any,
+    orderTipoCambio: unknown,
+    dollarRate: number,
+  ) {
+    if (!Array.isArray(items)) return items;
+
+    return items.map((item) => {
+      const tipoCambio =
+        Number(item.tipo_cambio) || Number(orderTipoCambio) || dollarRate;
+      const unitPriceSoles = Number(
+        this.toSoles(
+          item.unit_price,
+          item.currency_type_id,
+          tipoCambio,
+        ).toFixed(2),
+      );
+      const unitPriceDolares = Number(
+        this.toDolares(
+          item.unit_price,
+          item.currency_type_id,
+          tipoCambio,
+        ).toFixed(2),
+      );
+      const subtotalSoles = Number(
+        this.toSoles(item.subtotal, item.currency_type_id, tipoCambio).toFixed(
+          2,
+        ),
+      );
+      const subtotalDolares = Number(
+        this.toDolares(item.subtotal, item.currency_type_id, tipoCambio).toFixed(
+          2,
+        ),
+      );
+
+      return {
+        ...item,
+        tipo_cambio: tipoCambio,
+        unit_price: unitPriceSoles,
+        unit_price_soles: unitPriceSoles,
+        unit_price_dolares: unitPriceDolares,
+        subtotal: subtotalSoles,
+        subtotal_soles: subtotalSoles,
+        subtotal_dolares: subtotalDolares,
+      };
+    });
+  }
+
   async create(
     createOrderDto: CreateOrderDto,
     userId?: number | string,
@@ -225,9 +286,10 @@ export class OrdersService {
             return tx.order_items.create({
               data: {
                 quantity: item.quantity,
-                unit_price:
-                  surchargePercent > 0 ? priceWithSurcharge : unit_price || 0,
+                unit_price: surchargePercent > 0 ? priceWithSurcharge : unit_price || 0,
+                tipo_cambio:tipoCambio,
                 subtotal: subtotal,
+
                 orders: {
                   connect: { id: orders.id },
                 },
@@ -450,6 +512,7 @@ JSON_OBJECT(
           'quantity', oi.quantity,
           'unit_price', oi.unit_price,
           'subtotal', oi.subtotal,
+          'tipo_cambio', oi.tipo_cambio,
           'currency_type_id', a.currency_type_id,
           'article_description', a.description
         )
@@ -482,25 +545,11 @@ JSON_OBJECT(
         typeof currentOrder.items === 'string'
           ? JSON.parse(currentOrder.items)
           : currentOrder.items;
-      const normalizedItems = Array.isArray(items)
-        ? items.map((item) => ({
-            ...item,
-            unit_price: Number(
-              this.toSoles(
-                item.unit_price,
-                item.currency_type_id,
-                dollarRate,
-              ).toFixed(2),
-            ),
-            subtotal: Number(
-              this.toSoles(
-                item.subtotal,
-                item.currency_type_id,
-                dollarRate,
-              ).toFixed(2),
-            ),
-          }))
-        : items;
+      const normalizedItems = this.normalizeOrderItems(
+        items,
+        currentOrder.tipo_cambio,
+        dollarRate,
+      );
 
       const totalSoles = Array.isArray(normalizedItems)
         ? normalizedItems.reduce(

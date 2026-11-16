@@ -2877,10 +2877,11 @@ model order_items {
   id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
   order_id   BigInt   @db.UnsignedBigInt
   article_id BigInt   @db.UnsignedBigInt
-  quantity   Int      @default(1)
-  unit_price Decimal  @db.Decimal(10, 2)
-  subtotal   Decimal  @db.Decimal(10, 2)
-  created_at DateTime @default(now()) @db.Timestamp(0)
+  quantity    Int      @default(1)
+  unit_price  Decimal  @db.Decimal(10, 2)
+  subtotal    Decimal  @db.Decimal(10, 2)
+  tipo_cambio Decimal? @default(0.00) @db.Decimal(5, 2)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
 
   orders     orders   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "order_items_order_id_foreign")
   articles   articles @relation(fields: [article_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "order_items_article_id_foreign")

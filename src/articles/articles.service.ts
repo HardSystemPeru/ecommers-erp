@@ -1337,4 +1337,11 @@ export class ArticlesService {
       .$queryRaw`SELECT article_id , saldo FROM v_article_stock_global WHERE article_id = ${BigInt(id)}`;
     return stockRows[0] ?? { article_id: String(id), saldo: 0 };
   }
+
+  async incrementoPorcentaje(){
+      return await this.prisma.payment_methods.findUnique({ where: { id:2 },
+      select:{surcharge_percent:true,created_at:true} })
+
+    
+  }
 }

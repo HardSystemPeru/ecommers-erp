@@ -12,4 +12,4 @@ GET https://cyberhouse.pe/prueba/api/auth/session
 GET https://cyberhouse.pe/prueba/api/auth/csrf
 
 ### Consultar configuración CSRF
-GET http://192.168.18.26:3000/api/articles
+GET http://192.168.18.26:3009/api/articles/recargoTarjeta

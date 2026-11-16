@@ -20,6 +20,12 @@ import { extname } from 'path';
 export class ArticlesController {
   constructor(private readonly articlesService: ArticlesService) {}
 
+
+     @Get('recargoTarjeta')
+   incrementoPorcentaje(){
+    return this.articlesService.incrementoPorcentaje()
+  }
+
   @Get('stocks-articles')
   stocks(@Query('article_id') article_id: number) {
     return this.articlesService.stocksArticles(article_id);
@@ -97,4 +103,5 @@ export class ArticlesController {
 
     return this.articlesService.findBySlug(id);
   }
+
 }
