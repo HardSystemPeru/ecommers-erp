@@ -232,7 +232,7 @@ export class AuthController {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge: this.accessCookieMaxAge(),
-      path: '/api',
+      path: process.env.COOKIE_PATH ?? '/api',
     });
   }
 
@@ -242,7 +242,7 @@ export class AuthController {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: this.refreshCookieMaxAge(),
-      path: '/api',
+      path:process.env.COOKIE_PATH ?? '/api',
     });
   }
 

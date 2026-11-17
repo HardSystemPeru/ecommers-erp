@@ -14,11 +14,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse();
     const request = ctx.getRequest();
 
-    // 👇 Manejar errores de Multer
     if (exception instanceof MulterError) {
       let message = 'Error al subir el archivo';
       if (exception.code === 'LIMIT_FILE_SIZE') {
-        message = 'El archivo supera el tamaño máximo permitido de 2MB';
+        message = 'El archivo supera el tamaño máximo permitido (20MB)';
       } else if (exception.code === 'LIMIT_UNEXPECTED_FILE') {
         message = 'Campo de archivo inesperado';
       }
@@ -30,23 +29,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
       });
     }
 
-    // 👇 Capturar el 413 que viene como objeto plano (no HttpException)
     if (exception instanceof Error && (exception as any).status === 413) {
       return response.status(400).json({
         statusCode: 400,
         timestamp: new Date().toISOString(),
         path: request.url,
-        message: 'El archivo supera el tamaño máximo permitido de 2MB',
+        message: 'El archivo supera el tamaño máximo permitido (20MB)',
       });
     }
 
-    // 👇 Capturar HttpException con status 413
     if (exception instanceof HttpException && exception.getStatus() === 413) {
       return response.status(400).json({
         statusCode: 400,
         timestamp: new Date().toISOString(),
         path: request.url,
-        message: 'El archivo supera el tamaño máximo permitido de 2MB',
+        message: 'El archivo supera el tamaño máximo permitido (20MB)',
       });
     }
 
@@ -64,7 +61,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       statusCode: status,
       timestamp: new Date().toISOString(),
       path: request.url,
-      message,
+      ...(typeof message === 'object' && message !== null
+        ? message
+        : { message }),
     });
   }
 }

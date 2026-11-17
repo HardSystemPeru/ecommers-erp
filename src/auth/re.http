@@ -1,0 +1,77 @@
+@baseUrl = https://demoweb.amkdelivery.com
+
+
+
+### Login Admin
+POST {{baseUrl}}/api/auth/login-admin
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "123456789"
+}
+
+
+
+
+
+### Productos (ejecutar después de Login Admin; usa cookies de sesión)
+GET {{baseUrl}}/api/articles?page=1&limit=10
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### CSRF Token
+GET {{baseUrl}}/api/auth/csrf
+
+
+
+### Login Cliente
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "juan.perez@example.com",
+  "password": "123456"
+}
+
+### Register (requiere captchaToken)
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "names": "Juan",
+  "lastnames": "Perez",
+  "email": "juan.perez@example.com",
+  "password": "123456",
+  "document_type": "DNI",
+  "document_number": "12345678",
+  "phone": "987654321",
+  "captchaToken": "dummy"
+}

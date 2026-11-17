@@ -38,17 +38,17 @@ model advances {
 }
 
 model article_images {
-  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  article_id BigInt   @db.UnsignedBigInt
-  url        String   @db.VarChar(500)
-  public_id  String?  @db.VarChar(255)
-  position   Int      @default(0)
-  is_main    Boolean  @default(false)
-  created_at DateTime @default(now()) @db.Timestamp(0)
-   articles   articles @relation(fields: [article_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "article_images_article_id_foreign")
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  article_id    BigInt   @db.UnsignedBigInt
+  url           String   @db.VarChar(500)
+  thumbnail_url String?  @db.VarChar(500)
+  public_id     String?  @db.VarChar(255)
+  position      Int      @default(0)
+  is_main       Boolean  @default(false)
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+  articles      articles @relation(fields: [article_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "article_images_article_id_foreign")
 
   @@index([article_id], map: "article_images_article_id_foreign")
-
   @@index([article_id], map: "fk_article_images_article")
 }
 

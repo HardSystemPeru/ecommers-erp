@@ -71,6 +71,7 @@ export class CartService {
         id: img.id?.toString(),
         article_id: img.article_id?.toString(),
         url: this.formatImageUrl(img.url),
+        thumbnail_url: this.formatImageUrl(img.thumbnail_url ?? img.url),
       })),
       categories: article.categories
         ? { ...article.categories, id: article.categories.id.toString() }
@@ -148,6 +149,7 @@ export class CartService {
         article_images: (art.article_images || []).map((img: any) => ({
           id: img.id.toString(),
           url: this.formatImageUrl(img.url),
+          thumbnail_url: this.formatImageUrl(img.thumbnail_url ?? img.url),
           position: img.position,
           is_main: img.is_main,
         })),

@@ -2,17 +2,21 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { calcComboTotals, priceComboLine } from './utils/combo-price.util';
+import { WatermarkService } from 'src/common/watermark/watermark.service';
+import { processArticleMainImage, validateArticleImageBuffer } from 'src/article_images/image-processing.util';
 
 @Injectable()
 export class ArticlesService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
+    private watermarkService: WatermarkService,
   ) {}
   async findAll(params: {
     page?: number;
@@ -564,9 +568,12 @@ export class ArticlesService {
                 name: art.brands.name,
               }
             : null,
-          article_images: art.article_images.map((img) => ({
+          article_images: art.article_images.map((img: any) => ({
             id: img.id.toString(),
             url: this.formatImageUrl(img.url),
+            thumbnail_url: this.formatImageUrl(
+              (img as any).thumbnail_url ?? img.url,
+            ),
             position: img.position,
             is_main: img.is_main,
           })),
@@ -871,6 +878,9 @@ export class ArticlesService {
             article_images: detail.articles.article_images.map((img: any) => ({
               id: img.id.toString(),
               url: this.formatImageUrl(img.url),
+              thumbnail_url: this.formatImageUrl(
+                (img as any).thumbnail_url ?? img.url,
+              ),
               position: img.position,
               is_main: img.is_main,
             })),
@@ -1157,9 +1167,12 @@ export class ArticlesService {
                   name: detail.articles.brands.name,
                 }
               : null,
-            article_images: detail.articles.article_images.map((img) => ({
+            article_images: detail.articles.article_images.map((img: any) => ({
               id: img.id.toString(),
               url: this.formatImageUrl(img.url),
+              thumbnail_url: this.formatImageUrl(
+                (img as any).thumbnail_url ?? img.url,
+              ),
               position: img.position,
               is_main: img.is_main,
             })),
@@ -1344,4 +1357,133 @@ export class ArticlesService {
 
     
   }
+
+  private parseIdArray(value: any): bigint[] {
+    if (value === undefined || value === null || value === '') return [];
+    if (Array.isArray(value)) return value.map((v) => BigInt(v)).filter(Boolean);
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed.map((v) => BigInt(v));
+      } catch {}
+      return trimmed
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .map((v) => BigInt(v));
+    }
+    return [BigInt(value)];
+  }
+
+  private baseNameFromImageUrl(url?: string | null): string | undefined {
+    if (!url) return undefined;
+    const rel = String(url).replace(/^https?:\/\/[^/]+/, '');
+    const m = rel.match(/\/storage\/articles\/([^/.]+)\.[^.]+$/);
+    return m?.[1];
+  }
+
+  private article422(messages: string[]): never {
+    throw new UnprocessableEntityException({
+      message: 'La imagen no es válida.',
+      errors: { image_url: messages },
+    });
+  }
+
+  private async processArticleImageUrl(file?: Express.Multer.File, existingUrl?: string | null) {
+    if (!file) return undefined;
+    if (!file.buffer) {
+      this.article422(['La imagen no es válida o está corrupta.']);
+    }
+    // validación finfo/contenido + tamaño uniforme 5MB
+    await validateArticleImageBuffer(file.buffer, 5 * 1024 * 1024);
+    const baseName = this.baseNameFromImageUrl(existingUrl);
+    const result = await processArticleMainImage({
+      buffer: file.buffer,
+      watermarkService: this.watermarkService,
+      baseName,
+    });
+    return result.url;
+  }
+
+  private pickArticleScalarData(body: any) {
+    const allowed = new Set([
+      'cod_fab','description','weight','with_deduction','series_enabled',
+      'measurement_unit_id','brand_id','category_id','sub_category_id',
+      'currency_type_id','company_type_id','user_id','url_supplier','location',
+      'warranty','tariff_rate','igv_applicable','plastic_bag_applicable','min_stock',
+      'purchase_price','public_price','distributor_price','authorized_price',
+      'public_price_percent','distributor_price_percent','authorized_price_percent',
+      'venta','habilitado_web','status','state_modify_article','filt_NameEsp','status_Esp',
+      'last_supplier','last_entry_guide','article_type_id','is_new_for_web',
+      'offer_price_percent','precio_final','has_offer','slug','last_date_purchase',
+    ]);
+    const data: any = {};
+    for (const [k, v] of Object.entries(body || {})) {
+      if (!allowed.has(k)) continue;
+      if (v === undefined) continue;
+      data[k] = v;
+    }
+    // casts básicos comunes en form-data
+    const boolKeys = ['with_deduction','series_enabled','igv_applicable','plastic_bag_applicable','venta','habilitado_web','status_Esp','is_new_for_web','has_offer'];
+    for (const k of boolKeys) {
+      if (k in data) data[k] = data[k] === true || data[k] === '1' || data[k] === 'true';
+    }
+    const intKeys = ['min_stock','status','state_modify_article','last_supplier','last_entry_guide','article_type_id'];
+    for (const k of intKeys) {
+      if (k in data && data[k] !== null && data[k] !== '') data[k] = Number(data[k]);
+    }
+    const bigintKeys = ['measurement_unit_id','brand_id','category_id','sub_category_id','currency_type_id','company_type_id','user_id'];
+    for (const k of bigintKeys) {
+      if (k in data && data[k] !== null && data[k] !== '') data[k] = BigInt(data[k] as any);
+    }
+    if ('last_date_purchase' in data && data.last_date_purchase) {
+      data.last_date_purchase = new Date(String(data.last_date_purchase));
+    }
+    return data;
+  }
+
+  async saveArticleWithImage(body: any, file?: Express.Multer.File) {
+    // category_ids puede venir como JSON/string/array; category_id principal opcional
+    const data = this.pickArticleScalarData(body);
+    const categoryIds = this.parseIdArray(body?.category_ids);
+    if (categoryIds.length && !data.category_id) {
+      data.category_id = categoryIds[0];
+    }
+    const imageUrl = await this.processArticleImageUrl(file);
+    if (imageUrl) data.image_url = imageUrl;
+
+    try {
+      const article = await this.prisma.articles.create({ data });
+      return this.findOne(Number(article.id));
+    } catch (e: any) {
+      throw e;
+    }
+  }
+
+  async updateArticleWithImage(id: string, body: any, file?: Express.Multer.File) {
+    const numId = Number(id);
+    if (!Number.isFinite(numId)) {
+      throw new BadRequestException('ID de artículo inválido');
+    }
+    const existing = await this.prisma.articles.findUnique({ where: { id: BigInt(numId) } });
+    if (!existing) {
+      throw new NotFoundException(`Artículo con ID ${id} no encontrado`);
+    }
+    const data = this.pickArticleScalarData(body);
+    const categoryIds = this.parseIdArray(body?.category_ids);
+    if (categoryIds.length && !data.category_id) {
+      data.category_id = categoryIds[0];
+    }
+    const imageUrl = await this.processArticleImageUrl(file, existing.image_url);
+    if (imageUrl) data.image_url = imageUrl;
+
+    await this.prisma.articles.update({
+      where: { id: BigInt(numId) },
+      data,
+    });
+    return this.findOne(numId);
+  }
+
 }

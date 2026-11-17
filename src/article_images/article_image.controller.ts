@@ -19,9 +19,36 @@ import { UpdateArticleImageDto } from './dto/update-article_image.to';
 import { AuthGuard } from '@nestjs/passport';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
 import { AllExceptionsFilter } from 'src/multer-exception.filter';
+
+const UPLOAD_LIMIT = 20 * 1024 * 1024; // 20MB entrada, salida se normaliza a ~300KB
+
+function imageFileFilter(
+  _req: any,
+  file: Express.Multer.File,
+  cb: (error: any, acceptFile: boolean) => void,
+) {
+  const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  const blocked = ['image/svg+xml', 'image/gif', 'image/tiff'];
+  if (blocked.includes(file.mimetype)) {
+    return cb(
+      new BadRequestException(
+        'Formato no permitido. No se aceptan SVG, GIF ni TIFF',
+      ),
+      false,
+    );
+  }
+  if (!allowed.includes(file.mimetype)) {
+    return cb(
+      new BadRequestException(
+        'Formato no permitido. Solo se aceptan imágenes JPEG, PNG o WebP',
+      ),
+      false,
+    );
+  }
+  cb(null, true);
+}
 
 @Controller('article-images')
 export class ArticleImageController {
@@ -32,30 +59,9 @@ export class ArticleImageController {
   @UseFilters(AllExceptionsFilter)
   @UseInterceptors(
     FileInterceptor('url', {
-      limits: {
-        fileSize: 2 * 1024 * 1024,
-      },
-      fileFilter: (req, file, cb) => {
-        if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|webp|avif)$/)) {
-          return cb(
-            new BadRequestException(
-              'Solo se permiten imágenes (jpg, jpeg, png, gif, webp)',
-            ),
-            false,
-          );
-        }
-        cb(null, true);
-      },
-      storage: diskStorage({
-        destination: './storage/articles',
-        filename: (req, file, cb) => {
-          const randomName = Array(32)
-            .fill(null)
-            .map(() => Math.round(Math.random() * 16).toString(16))
-            .join('');
-          return cb(null, `${randomName}${extname(file.originalname)}`);
-        },
-      }),
+      limits: { fileSize: UPLOAD_LIMIT },
+      fileFilter: imageFileFilter,
+      storage: memoryStorage(),
     }),
   )
   create(
@@ -79,6 +85,7 @@ export class ArticleImageController {
   findOne(@Param('id') id: string) {
     return this.articleImageService.findOne(id);
   }
+
   @Patch('set-main/:id')
   @UseGuards(AuthGuard('jwt'), AdminGuard)
   setMain(@Param('id') id: string) {
@@ -90,31 +97,9 @@ export class ArticleImageController {
   @UseFilters(AllExceptionsFilter)
   @UseInterceptors(
     FileInterceptor('image', {
-      limits: {
-        fileSize: 2 * 1024 * 1024,
-      },
-      fileFilter: (req, file, cb) => {
-        if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|webp)$/)) {
-          return cb(
-            new BadRequestException(
-              'Solo se permiten imágenes (jpg, jpeg, png, gif, webp)',
-            ),
-            false,
-          );
-        }
-        cb(null, true);
-      },
-      storage: diskStorage({
-        destination: './storage/articles',
-        filename: (req, file, cb) => {
-          const randomName = Array(32)
-            .fill(null)
-            .map(() => Math.round(Math.random() * 16).toString(16))
-            .join('');
-
-          cb(null, `${randomName}${extname(file.originalname)}`);
-        },
-      }),
+      limits: { fileSize: UPLOAD_LIMIT },
+      fileFilter: imageFileFilter,
+      storage: memoryStorage(),
     }),
   )
   update(

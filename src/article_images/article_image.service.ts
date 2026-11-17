@@ -1,9 +1,17 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { WatermarkService } from 'src/common/watermark/watermark.service';
 import { CreateArticleImageDto } from './dto/create-article_image.dto';
 import { UpdateArticleImageDto } from './dto/update-article_image.to';
+import { processArticleImage } from './image-processing.util';
+import { unlink } from 'fs/promises';
+import { join } from 'path';
 
 @Injectable()
 export class ArticleImageService {
@@ -37,7 +45,7 @@ export class ArticleImageService {
 
         if (response.ok) return;
         this.logger.warn(`Revalidación frontend respondió ${response.status}`);
-      } catch (error) {
+      } catch {
         this.logger.warn(
           `No se pudo revalidar el frontend (intento ${attempt})`,
         );
@@ -77,6 +85,36 @@ export class ArticleImageService {
     return `${baseUrl}${url}`;
   }
 
+  private async deleteLocalImage(url?: string | null): Promise<void> {
+    if (!url) return;
+    const rel = url.replace(/^https?:\/\/[^/]+/, '');
+    if (!rel.startsWith('/storage/articles/')) return;
+    const abs = join(process.cwd(), rel.replace(/^\//, ''));
+    try {
+      await unlink(abs);
+    } catch {
+      // ignore missing
+    }
+  }
+
+  private baseNameFromUrl(url?: string | null): string | undefined {
+    if (!url) return undefined;
+    const m = url.match(/\/storage\/articles\/([^/.]+)\.[^.]+$/);
+    return m?.[1];
+  }
+
+  private formatImage(image: any) {
+    return {
+      ...image,
+      id: image.id.toString(),
+      article_id: image.article_id.toString(),
+      url: this.formatImageUrl(image.url),
+      thumbnail_url: this.formatImageUrl(
+        (image as any).thumbnail_url ?? image.url,
+      ),
+    };
+  }
+
   async create(
     createArticleImageDto: CreateArticleImageDto,
     file?: Express.Multer.File,
@@ -84,34 +122,40 @@ export class ArticleImageService {
     const { article_id, is_main } = createArticleImageDto;
     const articleId = BigInt(article_id);
 
-    // Generar URL si hay un archivo
-    let imageUrl = createArticleImageDto.url;
+    let imageUrl = createArticleImageDto.url ?? null;
+    let thumbnailUrl: string | null = null;
+
     if (file) {
-      // Marca de agua: logo B/N semitransparente, centrado y grande
-      await this.watermarkService.applyToFile(file.path);
-      imageUrl = `/storage/articles/${file.filename}`;
+      if (!file.buffer) {
+        throw new BadRequestException('Archivo inválido');
+      }
+      const processed = await processArticleImage({
+        buffer: file.buffer,
+        watermarkService: this.watermarkService,
+      });
+      imageUrl = processed.url;
+      thumbnailUrl = processed.thumbnail_url;
     }
 
     if (!imageUrl) {
-      throw new Error('Debe proporcionar una URL o subir un archivo');
+      throw new BadRequestException('Debe proporcionar una URL o subir un archivo');
     }
 
-    // 1. Calcular la siguiente posición automáticamente
+    if (!thumbnailUrl) thumbnailUrl = imageUrl;
+
     const lastImage = await this.prisma.article_images.findFirst({
       where: { article_id: articleId },
       orderBy: { position: 'desc' },
     });
 
-    // Si no se envía posición, o se envía como null/undefined, usamos la automática
     const autoPosition = lastImage ? lastImage.position + 1 : 0;
     const finalPosition =
       createArticleImageDto.position === undefined ||
       createArticleImageDto.position === null ||
-      createArticleImageDto.position === 0
+      Number(createArticleImageDto.position) === 0
         ? autoPosition
         : Number(createArticleImageDto.position);
 
-    // 2. Si esta imagen se marca como principal, desactivar 'is_main' en las otras
     const shouldBeMain = is_main ?? autoPosition === 0;
     if (shouldBeMain) {
       await this.prisma.article_images.updateMany({
@@ -120,18 +164,17 @@ export class ArticleImageService {
       });
     }
 
-    // 3. Crear el registro de la imagen
     const image = await this.prisma.article_images.create({
       data: {
         article_id: articleId,
         url: imageUrl,
+        thumbnail_url: thumbnailUrl,
         public_id: createArticleImageDto.public_id,
         position: finalPosition,
         is_main: shouldBeMain,
-      },
+      } as any,
     });
 
-    // 4. Si es la imagen principal, actualizamos el campo 'image_url' del artículo
     if (image.is_main) {
       await this.prisma.articles.update({
         where: { id: articleId },
@@ -141,12 +184,7 @@ export class ArticleImageService {
 
     void this.notifyForArticle(articleId);
 
-    return {
-      ...image,
-      id: image.id.toString(),
-      article_id: image.article_id.toString(),
-      url: this.formatImageUrl(image.url),
-    };
+    return this.formatImage(image);
   }
 
   async findAll(article_id?: string) {
@@ -157,13 +195,9 @@ export class ArticleImageService {
 
     const images = await this.prisma.article_images.findMany({
       where,
+      orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
-    return images.map((image) => ({
-      ...image,
-      id: image.id.toString(),
-      article_id: image.article_id.toString(),
-      url: this.formatImageUrl(image.url),
-    }));
+    return images.map((image) => this.formatImage(image));
   }
 
   async findOne(id: string) {
@@ -171,12 +205,7 @@ export class ArticleImageService {
       where: { id: BigInt(id) },
     });
     if (!image) return null;
-    return {
-      ...image,
-      id: image.id.toString(),
-      article_id: image.article_id.toString(),
-      url: this.formatImageUrl(image.url),
-    };
+    return this.formatImage(image);
   }
 
   async update(
@@ -185,45 +214,48 @@ export class ArticleImageService {
     file?: Express.Multer.File,
   ) {
     const imageId = BigInt(id);
-
     const dto = updateArticleImageDto;
-
-    const data: any = { ...dto };
-
-    //  file → url
-    if (file) {
-      // Marca de agua: logo B/N semitransparente, centrado y grande
-      await this.watermarkService.applyToFile(file.path);
-      data.url = `/storage/articles/${file.filename}`;
+    const current = await this.prisma.article_images.findUnique({
+      where: { id: imageId },
+    });
+    if (!current) {
+      throw new NotFoundException('Imagen no encontrada');
     }
 
-    //  safe conversion
-    const articleIdFromBody = dto.article_id ? BigInt(dto.article_id) : null;
+    const data: any = {};
+    if (dto.public_id !== undefined) data.public_id = dto.public_id;
+    if (dto.position !== undefined) data.position = Number(dto.position);
+    if (dto.article_id !== undefined) data.article_id = BigInt(dto.article_id);
 
-    //  normalize is_main (YA ES BOOLEAN)
-    const isMain = dto.is_main === true;
-
-    if (isMain) {
-      let articleId = articleIdFromBody;
-
-      if (!articleId) {
-        const current = await this.prisma.article_images.findUnique({
-          where: { id: imageId },
-        });
-
-        if (!current) {
-          throw new NotFoundException('Imagen no encontrada');
-        }
-
-        articleId = current.article_id;
+    if (file) {
+      if (!file.buffer) {
+        throw new BadRequestException('Archivo inválido');
       }
+      const baseName = this.baseNameFromUrl(current.url);
+      const processed = await processArticleImage({
+        buffer: file.buffer,
+        watermarkService: this.watermarkService,
+        baseName,
+      });
+      data.url = processed.url;
+      data.thumbnail_url = processed.thumbnail_url;
+      if (!baseName) {
+        await this.deleteLocalImage(current.url);
+        await this.deleteLocalImage((current as any).thumbnail_url);
+      }
+    }
 
+    const articleIdFromBody = dto.article_id ? BigInt(dto.article_id) : null;
+    const isMain = dto.is_main === true;
+    if (isMain) {
+      const articleId = articleIdFromBody ?? current.article_id;
       await this.prisma.article_images.updateMany({
         where: { article_id: articleId },
         data: { is_main: false },
       });
-
       data.is_main = true;
+    } else if (dto.is_main === false) {
+      data.is_main = false;
     }
 
     const image = await this.prisma.article_images.update({
@@ -240,18 +272,11 @@ export class ArticleImageService {
 
     void this.notifyForArticle(image.article_id);
 
-    return {
-      ...image,
-      id: image.id.toString(),
-      article_id: image.article_id.toString(),
-      url: this.formatImageUrl(image.url),
-    };
+    return this.formatImage(image);
   }
 
   async setMain(id: string) {
     const imageId = BigInt(id);
-
-    // 1. obtener imagen actual
     const image = await this.prisma.article_images.findUnique({
       where: { id: imageId },
     });
@@ -262,19 +287,16 @@ export class ArticleImageService {
 
     const articleId = image.article_id;
 
-    // 2. quitar la principal actual
     await this.prisma.article_images.updateMany({
       where: { article_id: articleId },
       data: { is_main: false },
     });
 
-    // 3. poner esta como principal
     const updated = await this.prisma.article_images.update({
       where: { id: imageId },
       data: { is_main: true },
     });
 
-    // 4. actualizar portada del artículo
     await this.prisma.articles.update({
       where: { id: articleId },
       data: { image_url: updated.url },
@@ -282,11 +304,7 @@ export class ArticleImageService {
 
     void this.notifyForArticle(articleId);
 
-    return {
-      ...updated,
-      id: updated.id.toString(),
-      article_id: updated.article_id.toString(),
-    };
+    return this.formatImage(updated);
   }
 
   async remove(id: string) {
@@ -295,28 +313,25 @@ export class ArticleImageService {
         where: { id: BigInt(id) },
       });
 
-      // SOLO si era principal
+      await this.deleteLocalImage(image.url);
+      await this.deleteLocalImage(image.thumbnail_url);
+
       if (image.is_main) {
-        // buscar siguiente imagen disponible
         const nextMain = await this.prisma.article_images.findFirst({
           where: { article_id: image.article_id },
-          orderBy: { created_at: 'asc' }, // mejor que position si no es confiable
+          orderBy: { created_at: 'asc' },
         });
 
         if (nextMain) {
-          // 1. marcarla como principal en imágenes
           await this.prisma.article_images.update({
             where: { id: nextMain.id },
             data: { is_main: true },
           });
-
-          // 2. actualizar producto
           await this.prisma.articles.update({
             where: { id: image.article_id },
             data: { image_url: nextMain.url },
           });
         } else {
-          // no hay imágenes
           await this.prisma.articles.update({
             where: { id: image.article_id },
             data: { image_url: null },
@@ -326,12 +341,9 @@ export class ArticleImageService {
 
       void this.notifyForArticle(image.article_id);
 
-      return {
-        id: image.id.toString(),
-        article_id: image.article_id.toString(),
-        url: this.formatImageUrl(image.url),
-      };
+      return this.formatImage(image);
     } catch (error) {
+      if (error instanceof NotFoundException) throw error;
       throw new NotFoundException('Imagen no encontrada');
     }
   }

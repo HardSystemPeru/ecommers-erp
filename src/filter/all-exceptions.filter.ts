@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { MulterError } from 'multer';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -17,12 +18,51 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse();
     const request = ctx.getRequest();
 
+    // Respuestas 422 específicas para image_url de artículos (compat ERP)
+    if (exception instanceof MulterError) {
+      const path = request?.url || '';
+      if (
+        path.includes('/articles-save') ||
+        path.includes('/articlesupdate')
+      ) {
+        const msg =
+          exception.code === 'LIMIT_FILE_SIZE'
+            ? 'La imagen no debe pesar más de 5 MB.'
+            : 'La imagen no es válida.';
+        return response.status(422).json({
+          message: 'La imagen no es válida.',
+          errors: { image_url: [msg] },
+        });
+      }
+      const message =
+        exception.code === 'LIMIT_FILE_SIZE'
+          ? 'El archivo supera el tamaño máximo permitido (20MB)'
+          : 'Error al subir el archivo';
+      return response.status(400).json({
+        statusCode: 400,
+        timestamp: new Date().toISOString(),
+        path: request.url,
+        message,
+      });
+    }
+
+    if (exception instanceof Error && (exception as any).status === 413) {
+      const path = request?.url || '';
+      if (path.includes('/articles-save') || path.includes('/articlesupdate')) {
+        return response.status(422).json({
+          message: 'La imagen no es válida.',
+          errors: {
+            image_url: ['La imagen no debe pesar más de 5 MB.'],
+          },
+        });
+      }
+    }
+
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    // Esto te mostrará el error real en consola
     this.logger.error(
       `${request.method} ${request.url}`,
       exception instanceof Error ? exception.stack : String(exception),
