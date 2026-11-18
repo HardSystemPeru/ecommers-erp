@@ -95,25 +95,31 @@ export class ArticlesService {
           relatedTerms.length > 0 ? relatedTerms : [originalTerm];
 
         return {
-          OR: termsToSearch.flatMap((t) => [
-            // 1. Coincidencia directa en Categoría o Marca
-            { categories: { name: { contains: t } } },
-            { brands: { name: { contains: t } } },
+          OR: termsToSearch.flatMap((t) => {
+            const conditions: any[] = [
+              // 1. Coincidencia directa en Categoría o Marca
+              { categories: { name: { contains: t } } },
+              { brands: { name: { contains: t } } },
 
-            // 2. Coincidencia en Descripción, excluyendo accesorios relacionados
-            {
-              AND: [
-                { description: { contains: t } },
-                { description: { not: { contains: `para ${t}` } } },
-                { description: { not: { contains: `compatible ${t}` } } },
-                { description: { not: { contains: `compatible con ${t}` } } },
-                { description: { not: { contains: `uso en ${t}` } } },
-              ],
-            },
+              // 2. Coincidencia en Descripción, excluyendo accesorios relacionados
+              {
+                AND: [
+                  { description: { contains: t } },
+                  { description: { not: { contains: `para ${t}` } } },
+                  { description: { not: { contains: `compatible ${t}` } } },
+                  { description: { not: { contains: `compatible con ${t}` } } },
+                  { description: { not: { contains: `uso en ${t}` } } },
+                ],
+              },
+            ];
 
-            // 3. Coincidencia en Código de Fabricante
-            { cod_fab: { contains: t } },
-          ]),
+            // 3. Coincidencia por ID de artículo (en vez de cod_fab)
+            if (/^\d+$/.test(t)) {
+              conditions.push({ id: BigInt(t) });
+            }
+
+            return conditions;
+          }),
         };
       });
     }

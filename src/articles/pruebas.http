@@ -1,0 +1,7 @@
+### Listar/buscar artículos (search por nombre, descripción, cod_fab, marca, categoría)
+GET http://localhost:3009/api/articles?type=article&page=1&limit=12&search=8381
+Accept: application/json
+
+### Detalle por id
+GET http://localhost:3009/api/articles/9226
+Accept: application/json
